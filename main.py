@@ -15,11 +15,11 @@ import logging
 import ssl
 from aiohttp import web
 
-WEBHOOK_HOST = 'WEBHOOK_HOST'
+WEBHOOK_HOST = '176.113.83.175'
 WEBHOOK_PORT = 8443
 WEBHOOK_LISTEN = '0.0.0.0'
 
-API_TOKEN = 'API_TOKEN'
+API_TOKEN = '1031869556:AAHPfN9hXLdcBL8XA7C3o7ge1Gdi2I_g1bs'
 
 WEBHOOK_SSL_CERT = './webhook_cert.pem'  # Path to the ssl certificate
 WEBHOOK_SSL_PRIV = './webhook_pkey.pem'  # Path to the ssl private key
@@ -59,23 +59,25 @@ logging.basicConfig(filename='log.txt',
 def start_message(message):
     if len(message.text.split()) > 1:
         code = message.text.split()[1]
-        global user_slot
 
-        k = 9000
-        for i in range(len(user_slot)):
-            if user_slot[i].invitation_link == code:
-                user_slot[i].playing_with = message.chat.id
-                user_slot[i].is_waiting = False
-                k = i
-                break
-        if k == 9000:
-            bot.send_message(message.chat.id, 'The link is no longer valid')
-            return 0
+        user_slot = hangman_player()
+        if user_slot.load_with_link(code):
+            user_slot.playing_with = message.chat.id
+            user_slot.is_waiting = False
+            user_slot.invitation_link = 0
+            user_slot.save(user_slot.user_id)
 
-        user_slot.append(hangman_player())
-        user_slot[-1].user_id = message.from_user.id
-        user_slot[-1].synhronize(user_slot[k])
-        user_slot[k].send_message(bot, message)
+            user_connecting = hangman_player()
+            user_connecting.create_new(message)
+            user_connecting.user_id = message.from_user.id
+            user_connecting.language = message.from_user.language_code
+            user_connecting.synhronize(user_slot)
+
+            user_connecting.save(message.from_user.id)
+            user_slot.send_message(bot, message)
+
+        else:
+            bot.send_message(message.chat.id, 'Link is no longer valid')
         return 0 
 
 
@@ -203,6 +205,7 @@ class hangman_player():
         self.current_word = ' '*100
         self.number_of_attempts = 0
         self.user_id = 0
+        self.language = ' '*10
 
         self.invitation_link = ' '*100
         self.is_waiting = False
@@ -220,11 +223,21 @@ class hangman_player():
         word = self.selected_word[0]
         for i in range(1,len(self.selected_word)):
             word += ' '+self.current_word[i]
-        information = 'To end the game type /exit or /quit.\nTo see the leaderboard type /rating_hangman\n\n'
-        bot.send_message(self.user_id, 'Hangman starts!\n'+information+'The hidden word:\n'+word)
+        if self.language == 'ru':
+            information = 'Чтобы закончить игру, напишите /exit, /quit.\nЧтобы посмотреть рейтинг игроков, напишите /rating_hangman\n\n'
+            bot.send_message(self.user_id, 'Виселица началась!\n'+information+'Загаданное слово:\n'+word)
+        else:
+            information = 'To end the game type /exit or /quit.\nTo see the leaderboard type /rating_hangman\n\n'
+            bot.send_message(self.user_id, 'Hangman starts!\n'+information+'The hidden word:\n'+word)
         bot.send_photo(self.user_id, photo=open('hangman/75px-Hangman-0.png', 'rb'))
 
-        bot.send_message(message.chat.id, 'Hangman starts!\n'+information+'The hidden word:\n'+word)
+
+        if message.from_user.language_code == 'ru':
+            information = 'Чтобы закончить игру, напишите /exit, /quit.\nЧтобы посмотреть рейтинг игроков, напишите /rating_hangman\n\n'
+            bot.send_message(message.chat.id, 'Виселица началась!\n'+information+'Загаданное слово:\n'+word)
+        else:
+            information = 'To end the game type /exit or /quit.\nTo see the leaderboard type /rating_hangman\n\n'
+            bot.send_message(message.chat.id, 'Hangman starts!\n'+information+'The hidden word:\n'+word)
         bot.send_photo(message.chat.id, photo=open('hangman/75px-Hangman-0.png', 'rb'))
         
 
@@ -232,11 +245,76 @@ class hangman_player():
         self.selected_word = friend.selected_word
         self.current_word = friend.current_word
         self.playing_with = friend.user_id
-        friend.is_waiting = False
+
+
+    def load(self, user_id):
+        conn = sqlite3.connect('hangman/hangman_users.bd')
+        c = conn.cursor()
+        c.execute('SELECT * FROM players WHERE user_id = ? LIMIT 1', [user_id])
+        temp = c.fetchall()[0]
+        conn.close()
+
+        self.selected_word = temp[1]
+        self.current_word = temp[2]
+        self.number_of_attempts = int(temp[3])
+        self.user_id = int(temp[0])
+        self.language = temp[4]
+
+        self.invitation_link = temp[5]
+        self.is_waiting = bool(int(temp[6]))
+        self.playing_with = int(temp[7])
+
+
+    def create_new(self, message):
+        conn = sqlite3.connect('hangman/hangman_users.bd')
+        c = conn.cursor()
+        c.execute('INSERT or REPLACE INTO players VALUES (?,?,?,?,?,?,?,?)', 
+            (message.from_user.id, ' ', ' ', 0, message.from_user.language_code, ' ', 0, 0))
+        conn.commit()
+        conn.close()
+
+
+    def save(self, user_id):
+        conn = sqlite3.connect('hangman/hangman_users.bd')
+        c = conn.cursor()
+        c.execute('INSERT or REPLACE INTO players VALUES (?,?,?,?,?,?,?,?)', 
+            (user_id, self.selected_word, self.current_word, self.number_of_attempts, 
+                self.language, self.invitation_link, int(self.is_waiting), self.playing_with))
+        conn.commit()
+        conn.close()
+
+    def delete(self, user_id):
+        conn = sqlite3.connect('hangman/hangman_users.bd')
+        c = conn.cursor()
+        c.execute('DELETE FROM players WHERE user_id = ? LIMIT 1', [user_id])
+        conn.commit()
+        conn.close()
+
+    def load_with_link(self, link):
+        conn = sqlite3.connect('hangman/hangman_users.bd')
+        c = conn.cursor()
+        c.execute('SELECT * FROM players WHERE invitation_link = ? LIMIT 1', [link])
+        temp = c.fetchall()
+        conn.close()
+
+        if len(temp) == 1:
+            temp = temp[0]
+            self.selected_word = temp[1]
+            self.current_word = temp[2]
+            self.number_of_attempts = int(temp[3])
+            self.user_id = int(temp[0])
+            self.language = temp[4]
+
+            self.invitation_link = temp[5]
+            self.is_waiting = bool(int(temp[6]))
+            self.playing_with = int(temp[7])
+            return True
+        else:
+            return False
 
 
 
-user_slot = []
+
 
 
 def choose_word(language_code):
@@ -261,17 +339,7 @@ def select_letters(word):
 def play_hangman(message):
     global user_slot
 
-    user_id = message.from_user.id
-    k = 9000
-    for i in range(len(user_slot)):
-        if user_slot[i].user_id == user_id:
-            user_slot[i].user_id = user_id
-            k = i
-            break
-
-    if k == 9000:
-        user_slot.append(hangman_player())
-        user_slot[-1].user_id = user_id
+    hangman_player().create_new(message)
 
     keyboard = telebot.types.ReplyKeyboardMarkup(True)
     keyboard.row(u'\U0001F1F7\U0001F1FA', u'\U0001F1EC\U0001F1E7')
@@ -298,15 +366,14 @@ def analyze_end_of_sentence(text):
 
 @bot.message_handler(content_types=['text'])
 def send_text(message):
-    global user_slot
-    user_id = message.from_user.id
-    k = 9000
-    for i in range(len(user_slot)):
-        if user_slot[i].user_id == user_id:
-            k = i
 
-    if k != 9000:
-        if user_slot[k].selected_word == ' '*100:
+    if check_if_playing(message.from_user.id, 'hangman/hangman_users.bd'):
+        # open file and get current status
+        user_slot = hangman_player()
+        user_slot.load(message.from_user.id)
+
+        # check whether word has already been selected
+        if user_slot.selected_word == ' ':
             if message.text == u'\U0001F1F7\U0001F1FA':
                 word = choose_word('ru')
             elif message.text == u'\U0001F1EC\U0001F1E7':
@@ -315,14 +382,14 @@ def send_text(message):
                 bot.send_message(message.chat.id,'Select the language first')
                 return 0 
 
-            user_slot[k].selected_word = word[0]
-            user_slot[k].current_word = select_letters(user_slot[k].selected_word)
-            user_slot[k].number_of_attempts = 0
+            user_slot.selected_word = word[0]
+            user_slot.current_word = select_letters(user_slot.selected_word)
+            
 
             logging.info('')
-            logging.info(message.from_user.first_name+' started hangman with word: '+word[0]+'. Taking '+str(k)+' slot.')
+            logging.info(message.from_user.first_name+' started hangman with word: '+word[0])
 
-            user_slot[k].is_waiting = True
+            user_slot.is_waiting = True
             if message.from_user.language_code == 'ru':
                 keyboard = telebot.types.ReplyKeyboardMarkup(True)
                 keyboard.row('Играть одному', 'Играть с другом')
@@ -331,25 +398,28 @@ def send_text(message):
                 keyboard = telebot.types.ReplyKeyboardMarkup(True)
                 keyboard.row('Play by yourself', 'Play with friend')
                 bot.send_message(message.chat.id, 'Do you want to play by yourself or with friend?', reply_markup=keyboard)
+            user_slot.save(message.from_user.id)
             return 0
 
-        if user_slot[k].is_waiting:
+        # wait for connection from other user
+        if user_slot.is_waiting:
             if message.text.lower() in ['play by yourself', 'играть одному']:
-                user_slot[k].is_waiting = False
-                string = user_slot[k].selected_word[0]
-                for i in range(1,len(user_slot[k].selected_word)):
-                    string += ' '+user_slot[k].current_word[i]
+                user_slot.is_waiting = False
+                add = user_slot.selected_word[0]
+                for i in range(1,len(user_slot.selected_word)):
+                    add += ' '+user_slot.current_word[i]
                 if message.from_user.language_code == 'ru':
                     information = 'Чтобы закончить игру, напишите /exit, /quit.\nЧтобы посмотреть рейтинг игроков, напишите /rating_hangman\n\n'
-                    bot.send_message(message.chat.id, 'Виселица началась!\n'+information+'Загаданное слово:\n'+string)
+                    bot.send_message(message.chat.id, 'Виселица началась!\n'+information+'Загаданное слово:\n'+add)
                 else:
                     information = 'To end the game type /exit or /quit.\nTo see the leaderboard type /rating_hangman\n\n'
-                    bot.send_message(message.chat.id, 'Hangman starts!\n'+information+'The hidden word:\n'+string)
+                    bot.send_message(message.chat.id, 'Hangman starts!\n'+information+'The hidden word:\n'+add)
                 bot.send_photo(message.chat.id, photo=open('hangman/75px-Hangman-0.png', 'rb'))
+                user_slot.save(message.from_user.id)
                 return 0
 
             if message.text.lower() in ['play with friend', 'играть с другом']:
-                link = 'https://t.me/GronxBot?start=' + user_slot[k].generate_link() 
+                link = 'https://t.me/GronxBot?start=' + user_slot.generate_link() 
                 if message.from_user.language_code == 'ru':
                     information = 'Отправьте эту ссылку другу: '+link+\
                     '\n\nЧтобы закончить игру, напишите /exit, /quit.\nЧтобы посмотреть рейтинг игроков, напишите /rating_hangman\n\n'
@@ -359,8 +429,10 @@ def send_text(message):
                 bot.send_message(message.chat.id, information)
 
             if message.text.lower() in ['/exit', '/quit']:
-                user_slot.pop(k)
+                user_slot.delete(message.from_user.id)
                 bot.send_message(message.chat.id, 'The game of hangman has ended.')
+                
+            user_slot.save(message.from_user.id)
             return 0
             
 
@@ -372,16 +444,17 @@ def send_text(message):
             letter = text[0]
             if len(letter) != 1:
                 if letter == 'exit' or letter == '/exit' or letter == 'quit' or letter == '/quit':
-                    user_slot.pop(k)
+                    user_slot.delete(message.from_user.id)
                     bot.send_message(message.chat.id, 'The game of hangman has ended.')
                 else: 
                     bot.send_message(message.chat.id, 'Type no more then 1 letter.')
             else:
-                hangman_game(k, letter, message)
+                hangman_game(letter, message)
         return 0
 
 
     global playing_game
+    user_id = message.from_user.id
     k = 9000
     for i in range(len(playing_game)):
         if playing_game[i] == user_id:
@@ -521,92 +594,92 @@ def change_faces(message):
     bot.send_photo(message.chat.id, photo=open('faces/goblin_image.png', 'rb'))
 
 
-def hangman_game(k, letter, message):
-    global user_slot
-
+def hangman_game(letter, message):
     check_for_winning = True
 
     logging.info('')
     logging.info(message.from_user.first_name+' playing hangman: '+message.text)
     
-    
-    if len(user_slot[k].selected_word.split(letter)) != 1:
-        memory = numpy.zeros(len(user_slot[k].selected_word))
-        for i in range(1, len(user_slot[k].selected_word)-1):
-            if user_slot[k].selected_word[i] == letter:
+    user_slot = hangman_player()
+    user_slot.load(message.from_user.id)
+
+    if len(user_slot.selected_word.split(letter)) != 1:
+        memory = numpy.zeros(len(user_slot.selected_word))
+        for i in range(1, len(user_slot.selected_word)-1):
+            if user_slot.selected_word[i] == letter:
                 memory[i] = 1
 
         index, = numpy.where(memory != 0)
         for i in index:
-            temp = user_slot[k].current_word[0:i]+letter
-            user_slot[k].current_word = temp + user_slot[k].current_word[i+1:]
+            temp = user_slot.current_word[0:i]+letter
+            user_slot.current_word = temp + user_slot.current_word[i+1:]
 
         #check for winning
-        for i in range(len(user_slot[k].current_word)):
-            if user_slot[k].current_word[i] == '_':
+        for i in range(len(user_slot.current_word)):
+            if user_slot.current_word[i] == '_':
                 check_for_winning = False
 
         if check_for_winning:
             rating = hangman_rating(message, True)
             if message.from_user.language_code == 'ru':
                 info = '.\nВы находитесь на '+str(rating)+' месте. Чтобы увидеть весь рейтинг напишите /rating_hangman'
-                bot.send_message(message.chat.id, 'Вы выиграли! Загаданное слово было '+user_slot[k].selected_word+info)
+                bot.send_message(message.chat.id, 'Вы выиграли! Загаданное слово было '+user_slot.selected_word+info)
                 bot.send_sticker(message.chat.id, 'CAACAgIAAxkBAAIF3l5SxwdmJLonehCJ_kXytXOFEDVJAAJqBQACj51aBezX_MwOvzwHGAQ')
             else:
                 info = '.\nYou are on '+str(rating)+' place. To see the whole leaderboard type /rating_hangman'
-                bot.send_message(message.chat.id, 'You won! The hidden word was '+user_slot[k].selected_word+info)
+                bot.send_message(message.chat.id, 'You won! The hidden word was '+user_slot.selected_word+info)
 
-            if user_slot[k].playing_with != 0:
-                bot.send_message(user_slot[k].playing_with, message.from_user.first_name+' won!')
-                for i in range(user_slot):
-                    if user_slot[i].playing_with == user_slot[k].user_id:
-                        user_slot[i].playing_with = 0
-
-            user_slot.pop(k)
+            if user_slot.playing_with != 0:
+                bot.send_message(user_slot.playing_with, message.from_user.first_name+' won!')
+                
+            user_slot.delete(message.from_user.id)
             return 0
 
 
-        string = user_slot[k].selected_word[0]
-        for i in range(1,len(user_slot[k].selected_word)):
-            string += ' '+user_slot[k].current_word[i]
+        add = user_slot.selected_word[0]
+        for i in range(1,len(user_slot.selected_word)):
+            add += ' '+user_slot.current_word[i]
         if message.from_user.language_code == 'ru': 
-            bot.send_message(message.chat.id, 'Загаданное слово:\n'+string)
+            bot.send_message(message.chat.id, 'Загаданное слово:\n'+add)
         else: 
-            bot.send_message(message.chat.id, 'The hidden word:\n'+string)
-        photo_name = 'hangman/75px-Hangman-'+str(int(user_slot[k].number_of_attempts))+'.png'
+            bot.send_message(message.chat.id, 'The hidden word:\n'+add)
+        photo_name = 'hangman/75px-Hangman-'+str(int(user_slot.number_of_attempts))+'.png'
         bot.send_photo(message.chat.id, photo=open(photo_name, 'rb'))
-        if user_slot[k].playing_with != 0: 
-            bot.send_message(user_slot[k].playing_with, 'Guessed a letter')
+        
+        if user_slot.playing_with != 0: 
+            bot.send_message(user_slot.playing_with, message.from_user.first_name+' guessed a letter')
+        
+        user_slot.save(message.from_user.id)
     else:
               
-        user_slot[k].number_of_attempts += 1
-        if user_slot[k].number_of_attempts < 6:
-            string = user_slot[k].selected_word[0]
-            for i in range(1,len(user_slot[k].selected_word)):
-                string += ' '+user_slot[k].current_word[i]
+        user_slot.number_of_attempts += 1
+        if user_slot.number_of_attempts < 6:
+            add = user_slot.selected_word[0]
+            for i in range(1,len(user_slot.selected_word)):
+                add += ' '+user_slot.current_word[i]
             if message.from_user.language_code == 'ru': 
-                bot.send_message(message.chat.id, 'Загаданное слово:\n'+string)
+                bot.send_message(message.chat.id, 'Загаданное слово:\n'+add)
             else: 
-                bot.send_message(message.chat.id, 'The hidden word:\n'+string)
-            photo_name = 'hangman/75px-Hangman-'+str(int(user_slot[k].number_of_attempts))+'.png'
+                bot.send_message(message.chat.id, 'The hidden word:\n'+add)
+            user_slot.save(message.from_user.id)
+
+            photo_name = 'hangman/75px-Hangman-'+str(int(user_slot.number_of_attempts))+'.png'
             bot.send_photo(message.chat.id, photo=open(photo_name, 'rb'))
         else:
             rating = hangman_rating(message, False)
             if message.from_user.language_code == 'ru':
                 info = '.\nВы находитесь на '+str(rating)+' месте. Чтобы увидеть весь рейтинг напишите /rating_hangman'
-                bot.send_message(message.chat.id, 'Вы проиграли. Загаданное слово было '+user_slot[k].selected_word+info)
+                bot.send_message(message.chat.id, 'Вы проиграли. Загаданное слово было '+user_slot.selected_word+info)
                 bot.send_sticker(message.chat.id, 'CAACAgIAAxkBAAIFo15Sw_qBwmahpFlx4bIlbxesVJcTAAKIBQACj51aBdyiLJa0XpXkGAQ')
             else:
                 info = '.\nYou are on '+str(rating)+' place. To see the whole leaderboard type /rating_hangman'
-                bot.send_message(message.chat.id, 'You lost. The hidden word was '+user_slot[k].selected_word+info)
+                bot.send_message(message.chat.id, 'You lost. The hidden word was '+user_slot.selected_word+info)
             
-            if user_slot[k].playing_with != 0:
-                bot.send_message(user_slot[k].playing_with, message.from_user.first_name+' lost!')
-                for i in range(user_slot):
-                    if user_slot[i].playing_with == user_slot[k].user_id:
-                        user_slot[i].playing_with = 0
+            if user_slot.playing_with != 0:
+                bot.send_message(user_slot.playing_with, message.from_user.first_name+' lost!')
 
-            user_slot.pop(k)
+            user_slot.delete(message.from_user.id)
+            return 0
 
 
 def hangman_rating(message, win):
@@ -719,8 +792,17 @@ def hangman_show_rating(bot, message):
         bot.send_photo(message.chat.id, result)
         result.close()
 
+def check_if_playing(user_id, file_game):
+    conn = sqlite3.connect(file_game)
+    c = conn.cursor()
+    c.execute('SELECT * FROM players WHERE user_id = ? LIMIT 1', [user_id])
+    temp = c.fetchall() 
+    conn.close()
 
-
+    if len(temp) == 1:
+        return True
+    else:
+        return False
 
 
 # Remove webhook, it fails sometimes the set if there is a previous webhook

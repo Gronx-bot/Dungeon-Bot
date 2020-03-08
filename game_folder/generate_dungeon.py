@@ -640,9 +640,9 @@ def fill_containers(room, player_class, folder):
     map_flag = True
     for i in range(4):
         if room.content[i].is_container:
-            roll = numpy.random.randint(low=0, high=4)
+            roll_meta = numpy.random.randint(low=0, high=4)
 
-            if roll <= 1:
+            if roll_meta <= 1:
                 roll = numpy.random.randint(low=0, high=len(consumables))
                 room.content[i].content.description = consumables[roll]
                 room.content[i].content.type = 'consumable'
@@ -655,7 +655,7 @@ def fill_containers(room, player_class, folder):
                 if roll == 2 or roll == 3:
                     room.content[i].content.effect = 'travel'
 
-            if roll == 2 or 'weapon' in room.content[i].description.split():
+            if roll_meta == 2 or 'weapon' in room.content[i].description.split():
                 roll = numpy.random.randint(low=0, high=len(weapons))
                 room.content[i].content.description = random_material(weapons[roll], metal=True)
                 room.content[i].content.type = 'stats'
@@ -671,7 +671,7 @@ def fill_containers(room, player_class, folder):
                     room.content[i].content.effect = 'endurance'
                     room.content[i].content.add = roll_add
 
-            if roll == 3 or 'bookshelf' in room.content[i].description.split():
+            if roll_meta == 3 or 'bookshelf' in room.content[i].description.split():
                 roll = numpy.random.randint(low=0, high=101)
                 roll_add = numpy.random.randint(low=1, high=5)
                 room.content[i].content.type = 'score'
@@ -698,14 +698,14 @@ def fill_containers(room, player_class, folder):
             or 'library,' in room.purpose.split():
                 if ('bookshelf' in room.content[i].description.split()) == False and map_flag:
                     room.content[i].content.description = 'map'
-                    room.content[i].content.type = 'consumables'
+                    room.content[i].content.type = 'consumable'
                     room.content[i].content.effect = 'travel'
                     map_flag = False
 
             if 'laboratory' in room.purpose.split():
                 roll = numpy.random.randint(low=0, high=2)
                 room.content[i].content.description = consumables[roll]
-                room.content[i].content.type = 'consumables'
+                room.content[i].content.type = 'consumable'
                 room.content[i].content.effect = 'healing'
                 if roll == 0:
                     room.content[i].content.add = 2

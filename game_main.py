@@ -539,6 +539,7 @@ def game(bot, message):
             return 0 
         if message.text.lower() == 'no' and game_user[k].veteran_character:
             game_user[k].character.delete_character(message.from_user.id, folder='game_folder/')
+            game_user.pop(k)
             create_character(bot,message,True)
             return 0
 
