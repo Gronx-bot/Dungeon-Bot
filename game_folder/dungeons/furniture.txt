@@ -1,0 +1,78 @@
+Altar
+Armchair
+Armoire
+Arras
+Bag
+Barrel
+Bed
+Bench
+Blanket
+Box
+Brazier and charcoal
+Bucket
+Buffet cabinet
+Bunks
+Cabinet
+Candelabrum
+large Carpet
+Cask
+Chandelier
+Charcoal
+plain Chair
+padded Chair
+divan
+Chest
+wardrobe
+Coal
+Couch
+Crate
+Cresset
+Cupboard
+Cushion
+Dais
+Desk
+Fireplace and wood
+Fireplace with mantle
+Firkin
+Fountain
+Fresco
+Grindstone
+Hamper
+Hassock
+large Idol
+Keg
+Loom
+Mat
+Mattress
+Pail
+Painting
+Pallet
+Pedestal
+Pillow
+Quilt
+small Rug
+Rushes
+Sack
+Screen
+Sheet
+Shelf
+Shrine
+Sideboard
+Sofa
+Stand
+Statue
+high Stool
+normal Stool
+large Table
+long Table
+low Table
+round Table
+small Table
+trestle Table
+Tapestry
+Throne
+Trunk
+Tub
+Urn
+Wood billets
+Workbench

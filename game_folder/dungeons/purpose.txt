@@ -1,0 +1,8 @@
+lair
+maze
+mine
+planar gate
+stronghold
+shrine
+tomb
+treasure vault

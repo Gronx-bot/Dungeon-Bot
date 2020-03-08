@@ -1,0 +1,37 @@
+Altar
+Bells
+Brazier
+Candelabra
+Candles
+Candlesticks
+Cassocks
+Chimes
+pillars
+tapestry
+Drum
+Gong
+Holy symbol
+Holy writings
+Idol
+Incense burner
+Kneeling bench
+Lamp
+Lectern
+Mosaic
+Offertory container
+frescoes
+musical Pipes
+Prayer rug
+Pulpit
+Robes
+Screen
+Shrine
+Side chair
+Stand
+Statue
+Throne
+Thurible
+Tripod
+Vestments
+Votive light
+Whistle

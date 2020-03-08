@@ -1,0 +1,12 @@
+Barracks for miners
+Bedroom for a supervisor or manager
+Chapel dedicated to a patron deity of miners
+Cistern providing drinking water for miners
+Guardroom
+Kitchen used to feed workers
+Laboratory used to conduct tests on strange minerals extracted from the mine
+Lode where metal ore is mined
+Office used by the mine supervisor
+Smithy for repairing damaged tools
+Storage for tools and other equipment
+Strong room used to store ore for transport to the surface

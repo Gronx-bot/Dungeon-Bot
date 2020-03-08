@@ -1,0 +1,11 @@
+Antechamber for visiting dignitaries
+Armory containing mundane and magic gear used by the treasure vault's guards
+Barracks for guards
+Cistern providing fresh water
+Guardroom to defend against intruders
+Kennel
+Kitchen for feeding guards
+Watchroom that allows guards to observe those who approach the dungeon
+Prison for holding captured intruders
+vault
+Torture chamber for extracting information from captured intruders

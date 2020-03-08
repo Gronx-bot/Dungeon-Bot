@@ -1,0 +1,8 @@
+Conjuring room, used to summon creatures that guard the maze
+Guardroom for sentinels that patrol the maze
+Lair for guard beasts that patrol the maze
+prison used to hold captives condemned to the maze
+Shrine dedicated to a god or other entity
+Storage for food, as well as tools used by the maze's guardians to keep the complex in working order
+Well that provides drinking water
+Workshop where doors, torch sconces, and other furnishings are repaired and maintained

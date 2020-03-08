@@ -1,0 +1,27 @@
+Decorated antechamber
+Armory used by the portal's guardians
+Audience chamber for receiving visitors
+Barracks used by the portal's guards
+Bedroom for use by the high-ranking members of the order that guards the portal
+Chapel dedicated to a deity or deities related to the portal and its defenders
+Cistern providing fresh water
+Classroom for use of initiates learning about the portal's secrets
+Conjuring room for summoning creatures used to investigate or defend the portal
+Crypt where the remains of those that died guarding the portal are kept
+Dining room
+Divination room used to investigate the portal and events tied to it
+Dormitory for visitors and guards
+vestibule
+Gallery for displaying trophies
+Guardroom to protect or watch over the portal
+Kitchen
+Laboratory for conducting experiments relating to the portal and creatures that emerge from it
+Library holding books about the portal's history
+prison for holding captives or creatures that emerge from the portal
+Planar junction, where the gate to another plane once stood
+Storage
+Strong room
+Study
+Torture chamber, for questioning creatures that pass through the portal or that attempt to clandestinely use it
+Latrine
+Workshop for constructing tools and gear needed to study the portal

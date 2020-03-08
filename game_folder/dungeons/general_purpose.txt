@@ -1,0 +1,55 @@
+Laboratory
+Library
+Audience
+Lounge chamber
+Meditation chamber
+Aviary
+Banquet room
+Observatory
+Barracks
+Office
+latrine
+Pantry
+Bedroom
+prison
+Bestiary
+Reception room
+Refectory
+Chantry
+Robing room
+Chapel
+Salon
+Cistern
+Shrine
+Classroom
+Sitting room
+Closet
+Smithy
+Conjuring room
+Court
+Storage room
+Crypt
+vault
+Dining room
+Divination room
+Study
+Dormitory
+Temple
+Dressing room
+Throne room
+vestibule
+Torture chamber
+exercise room
+Gallery
+Game room
+Trophy room
+Guardroom
+Hall
+Waiting room
+great Hall
+Nursery
+Hallway
+Kennel
+Well
+Kitchen
+Workshop
