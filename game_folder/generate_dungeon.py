@@ -73,6 +73,25 @@ class Room:
                     text += ', '
         return temp, text
 
+    def load(self, furn, item):
+        furn = furn.split(';\n')[:-1]
+        for i in range(len(furn)):
+            furniture = furn[i].split('\n')
+            self.content[i].description = furniture[0].split(' = ')[1]
+            self.content[i].is_container = bool(int(furniture[1].split(' = ')[1]))
+
+        if len(item) != 0:
+            item = item.split(';\n')[:-1]
+            j = 0
+            for i in range(len(self.content)):
+                if self.content[i].is_container:
+                    temp = item[j].split('\n')
+                    self.content[i].content.description = temp[0].split(' = ')[1]
+                    self.content[i].content.type = temp[1].split(' = ')[1]
+                    self.content[i].content.effect = temp[2].split(' = ')[1]
+                    self.content[i].content.add = int(temp[3].split(' = ')[1])
+                    j += 1
+
 
 
 class Furniture:
@@ -93,6 +112,12 @@ class Furniture:
         if self.is_container == False:
             self.content = item
             self.is_container == True
+
+    def save_line(self):
+        text = 'description = '+self.description+'\n'
+        text+= 'is_container = '+str(int(self.is_container))+';'
+        return text
+            
 
 
 class Item:
@@ -655,6 +680,7 @@ def fill_containers(room, player_class, folder):
                 if roll == 2 or roll == 3:
                     room.content[i].content.effect = 'travel'
 
+                
             if roll_meta == 2 or 'weapon' in room.content[i].description.split():
                 roll = numpy.random.randint(low=0, high=len(weapons))
                 room.content[i].content.description = random_material(weapons[roll], metal=True)
@@ -898,7 +924,7 @@ def random_name(folder=''):
 
 
 
-def main(player, folder=''):
+def main(player, user_id, folder=''):
     text, purpose, creators, history = generate_outlines(folder)
 
     d = []
@@ -918,8 +944,9 @@ def main(player, folder=''):
         d[i] = fill_containers(d[i], player.role, folder)  
 
     d = set_monsters(d)  
+    set_dungeon(d, user_id, folder)
 
-    return text, creators, history, d
+    return text, creators, history
 
 
 def set_monsters(dungeon):
@@ -1130,5 +1157,83 @@ def generate_monster(room, creators, doom, folder=''):
 
     return [description, monster_type, hp, stats, how_to_attack]
 
+
+def set_dungeon(dungeon, user_id, folder=''):
+    conn = sqlite3.connect(folder+'game_control.bd')
+    c = conn.cursor()
+    for i in range(len(dungeon)):
+        neighbours = ''
+        for j in range(len(dungeon[i].neighbours)):
+            neighbours += str(dungeon[i].neighbours[j])+';'
+
+        room = dungeon[i]
+        furniture = ''
+        items = ''
+        for j in room.content:
+            if j.description != ' '*100:
+                furniture += j.save_line()+'\n'
+                if j.is_container:
+                    items += j.content.save_line()+'\n'
+
+        c.execute('INSERT INTO dungeon VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', 
+            (user_id, dungeon[i].room_id, dungeon[i].purpose, dungeon[i].chamber_state, 
+            dungeon[i].air, dungeon[i].description, int(dungeon[i].coord_x), int(dungeon[i].coord_y),
+            int(dungeon[i].is_cleared), int(dungeon[i].has_monster), neighbours, furniture, items))
+    conn.commit()
+    conn.close()
+
+def update_dungeon(dungeon, user_id, folder):
+    delete_dungeon(user_id, folder)
+    set_dungeon(dungeon, user_id, folder)
+
+def delete_dungeon(user_id, folder=''):
+    conn = sqlite3.connect(folder+'game_control.bd')
+    c = conn.cursor()
+    c.execute('DELETE FROM dungeon WHERE user_id = ?', [user_id])
+    conn.commit()
+    conn.close()
+
+
+def load_dungeon(user_id, folder=''):
+    dungeon = []
+    conn = sqlite3.connect(folder+'game_control.bd')
+    c = conn.cursor()
+    c.execute('SELECT * FROM dungeon WHERE user_id = ?', [user_id]) 
+    room = c.fetchall()
+    conn.close()
+    for i in range(len(room)):
+        temp = room[i]
+        x = Room()
+        x.room_id = int(temp[1])
+        x.purpose = temp[2]
+        x.chamber_state = temp[3]
+        x.air = temp[4]
+        x.description = temp[5]
+        x.coord_x = int(temp[6])
+        x.coord_y = int(temp[7])
+        x.is_cleared = bool(int(temp[8]))
+        x.has_monster = bool(int(temp[9]))
+
+        neighbours = []
+        for j in temp[10].split(';')[:-1]:
+            if j != ' ':
+                neighbours.append(int(j)) 
+            else:
+                neighbours.append(' ')
+        x.neighbours = neighbours
+
+        # furniture and items
+        if len(temp[11]) != 0:
+            x.load(temp[11], temp[12])
+
+        dungeon.append(x)
+
+    return dungeon
+        
+
+
 #clean_file('dungeons/religious_furniture.txt')
-#main([0,0])
+#delete_dungeon(123)
+#main([0,0], 123)
+
+

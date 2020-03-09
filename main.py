@@ -88,30 +88,25 @@ def start_message(message):
     bot.send_message(message.chat.id, text)
 
 
+def fun(n):
+    x = game_main.game_control()
+    x.delete(n)
+    x.create(n)
 
-playing_game = []
+#fun(100747297)    
 
 @bot.message_handler(commands=['game'])
 def game_message(message):
-    global playing_game
-    user_id = message.from_user.id
-    k = 9000
-    for i in range(len(playing_game)):
-        if playing_game[i] == user_id:
-            k = i
-            break
 
-    if k == 9000:
-        playing_game.append(user_id)
+    game_main.game_control().delete(message.from_user.id)
+    game_main.game_control().create(message.from_user.id)
 
 
-    logging.info('')
-    logging.info(message.from_user.first_name+' started the game taking '+str(k)+' slot.')
+    logging.info(message.from_user.first_name+' started the game.')
 
     info = 'Welcome to the world of Laindor!\nTo exit the game type /quit or /exit.\nTo see your characters status type /status.'+\
     '\nTo see game ratings type /rating_game'
     bot.send_message(message.chat.id, info)
-    game_main.clean_history(message)
     game_main.create_character(bot, message, True)
 
 
@@ -367,6 +362,7 @@ def analyze_end_of_sentence(text):
 @bot.message_handler(content_types=['text'])
 def send_text(message):
 
+    # hangman part
     if check_if_playing(message.from_user.id, 'hangman/hangman_users.bd'):
         # open file and get current status
         user_slot = hangman_player()
@@ -453,16 +449,9 @@ def send_text(message):
         return 0
 
 
-    global playing_game
-    user_id = message.from_user.id
-    k = 9000
-    for i in range(len(playing_game)):
-        if playing_game[i] == user_id:
-            k = i
-
-    if k != 9000:
+    # dungeon part
+    if check_if_playing(message.from_user.id, 'game_folder/game_control.bd'):
         if message.text == 'exit' or message.text == '/exit' or message.text == 'quit' or message.text == '/quit':
-            playing_game.pop(k)
             game_main.clean_history(message)
             bot.send_message(message.chat.id, 'The game has ended.')
         elif message.text == '/status':
@@ -471,7 +460,6 @@ def send_text(message):
         else:
             x = game_main.game(bot, message)
             if x == 1:
-                playing_game.pop(k)
                 game_main.clean_history(message)
         return 0 
 
@@ -805,6 +793,8 @@ def check_if_playing(user_id, file_game):
         return False
 
 
+
+
 # Remove webhook, it fails sometimes the set if there is a previous webhook
 bot.remove_webhook()
 
@@ -825,3 +815,5 @@ web.run_app(
 )
 
 #bot.polling()
+
+
