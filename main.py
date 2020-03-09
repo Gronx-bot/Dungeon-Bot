@@ -15,11 +15,11 @@ import logging
 import ssl
 from aiohttp import web
 
-WEBHOOK_HOST = '176.113.83.175'
+WEBHOOK_HOST = ''
 WEBHOOK_PORT = 8443
 WEBHOOK_LISTEN = '0.0.0.0'
 
-API_TOKEN = '1031869556:AAHPfN9hXLdcBL8XA7C3o7ge1Gdi2I_g1bs'
+API_TOKEN = 'Token'
 
 WEBHOOK_SSL_CERT = './webhook_cert.pem'  # Path to the ssl certificate
 WEBHOOK_SSL_PRIV = './webhook_pkey.pem'  # Path to the ssl private key
