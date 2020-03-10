@@ -14,12 +14,13 @@ import string
 import logging
 import ssl
 from aiohttp import web
+import asyncio
 
 WEBHOOK_HOST = ''
 WEBHOOK_PORT = 8443
 WEBHOOK_LISTEN = '0.0.0.0'
 
-API_TOKEN = 'Token'
+API_TOKEN = ''
 
 WEBHOOK_SSL_CERT = './webhook_cert.pem'  # Path to the ssl certificate
 WEBHOOK_SSL_PRIV = './webhook_pkey.pem'  # Path to the ssl private key
@@ -458,9 +459,12 @@ def send_text(message):
             game_main.show_status(bot, message)
             return 0
         else:
-            x = game_main.game(bot, message)
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            x = loop.run_until_complete(game_main.game(bot, message))
             if x == 1:
                 game_main.clean_history(message)
+
         return 0 
 
     user_first_name = message.from_user.first_name

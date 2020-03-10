@@ -166,24 +166,28 @@ class Item:
     def transfer_to_storage(self, user_id, user_chat_id, folder=''):
         conn = sqlite3.connect(folder+'item_storage.bd')
         c = conn.cursor()
-        c.execute('INSERT INTO items VALUES (?,?,?,?,?,?)', 
-            (self.description, self.type, str(self.effect), self.add, user_id, user_chat_id))
+        c.execute('SELECT * FROM items')
+        temp = c.fetchall()  
+        row_id = len(temp)+1
+        c.execute('INSERT INTO items VALUES (?,?,?,?,?,?,?)', 
+            (self.description, self.type, str(self.effect), self.add, user_id, user_chat_id, row_id))
         conn.commit()
         conn.close()
 
     def transfer_from_storage(self, user_id, folder=''):
         conn = sqlite3.connect(folder+'item_storage.bd')
         c = conn.cursor()
-        c.execute('SELECT * FROM items WHERE user_id != ? LIMIT 1', [user_id])
+        c.execute('SELECT * FROM items WHERE user_id != ?', [user_id])
         temp = c.fetchall()   
 
         if len(temp) == 0:
             conn.close()
             return 'nothing to transfer'
-        if len(temp) == 1:
-            temp = temp[0]
+        else:
+            roll = numpy.random.randint(low=0, high=len(temp))
+            temp = temp[roll]
 
-            c.execute('DELETE FROM items WHERE user_id = ? LIMIT 1', [temp[4]])
+            c.execute('DELETE FROM items WHERE id = ? LIMIT 1', [temp[6]])
             conn.commit()
             conn.close()
 
@@ -719,9 +723,7 @@ def fill_containers(room, player_class, folder):
                     room.content[i].content.description = 'a sack of '+str(roll)+' gold coins'
                     room.content[i].content.add = int(roll/45*5)
 
-            if 'office' in room.purpose.split() or 'observatory' in room.purpose.split() \
-            or 'study' in room.purpose.split() or 'library' in room.purpose.split() \
-            or 'library,' in room.purpose.split():
+            if 'office' in room.purpose.split() or 'observatory' in room.purpose.split():
                 if ('bookshelf' in room.content[i].description.split()) == False and map_flag:
                     room.content[i].content.description = 'map'
                     room.content[i].content.type = 'consumable'
@@ -745,7 +747,7 @@ def fill_containers(room, player_class, folder):
 
 
 
-def draw_dungeon(dungeon, player, k, folder='', map_found=False):
+async def draw_dungeon(dungeon, player, k, folder='', map_found=False):
     fig, ax = plt.subplots(1, frameon=False, figsize=(4,4))
     ax.xaxis.set_visible(False) 
     ax.yaxis.set_visible(False) 
@@ -924,7 +926,7 @@ def random_name(folder=''):
 
 
 
-def main(player, user_id, folder=''):
+async def main(player, user_id, folder=''):
     text, purpose, creators, history = generate_outlines(folder)
 
     d = []
@@ -966,7 +968,7 @@ def set_monsters(dungeon):
     return dungeon
 
 
-def generate_monster(room, creators, doom, folder=''):
+async def generate_monster(room, creators, doom, folder=''):
     invaders_flag = False; undead_flag = False; divine_flag = False
     magic_flag = False; alien_flag = False; beast_flag = False
     epic_flag = False
