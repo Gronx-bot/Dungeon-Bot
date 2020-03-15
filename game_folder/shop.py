@@ -12,8 +12,8 @@ from game_folder.generate_item import random_consumable, random_equipment
 def open_shop(bot, game_user, folder=''):
     conn = sqlite3.connect('game_folder/shop.bd')
     c = conn.cursor()
-    c.execute('SELECT * FROM items WHERE user_id = ?', [game_user.user_id])
-    items = c.fetchall()
+    c.execute('DELETE FROM items WHERE user_id = ?', [game_user.user_id])
+    conn.commit()
     conn.close()
 
     
@@ -282,7 +282,7 @@ def close_shop(bot, call):
 
     conn = sqlite3.connect('game_folder/shop.bd')
     c = conn.cursor()
-    c.execute('DELETE FROM items WHERE user_id = ? LIMIT 1', [call.from_user.id])
+    c.execute('DELETE FROM items WHERE user_id = ?', [call.from_user.id])
     conn.commit()
     conn.close()
 
