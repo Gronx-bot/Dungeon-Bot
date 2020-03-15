@@ -6,529 +6,38 @@ import matplotlib.pyplot as plt
 import pandas
 import sqlite3
 import sys
-import asyncio
 
 import game_folder.generate_dungeon
-
-
-class game_control:
-    """docstring for game_control"""
-    def __init__(self):
-        self.user_id = 0
-        self.character = Player()
-        self.monster = Player()
-        self.creating_character = False
-        self.veteran_character = False
-        self.last_status = 0
-        self.complete = False
-        self.dead = False
-        self.dungeon = []
-        self.creators = 0
-        self.doom = 0
-        self.x = 0; self.y = 0
-        self.in_room_now = 0
-        self.has_map = False
-        self.is_being_teleported = False
-        self.is_fighting = False
-        self.fighting_counter = 4
-
-    def choose_class(self, new_class):
-        new_class.name = self.character.name 
-        new_class.race = self.character.race
-        new_class.role = self.character.role
-        new_class.set_stats(self.character.strength, self.character.intellect, self.character.endurance)
-        new_class.inventory = self.character.inventory
-        new_class.score = self.character.score
-        new_class.hp = self.character.hp
-        self.character = new_class
-        
-
-    def load(self, user_id, folder='game_folder/'):
-        conn = sqlite3.connect(folder+'game_control.bd')
-        c = conn.cursor()
-
-        c.execute('SELECT * FROM players WHERE user_id = ? LIMIT 1', [user_id]) 
-        temp = c.fetchall()
-        temp = temp[0]
-        self.user_id = int(temp[0])
-        self.creating_character = bool(int(temp[2]))
-        self.veteran_character = bool(int(temp[3]))
-        self.last_status = int(temp[4])
-        self.complete = bool(int(temp[5]))
-        self.dead = bool(int(temp[6]))
-        self.creators = str(temp[7])
-        self.doom = str(temp[8])
-        self.x = int(temp[9]); self.y = int(temp[10])
-        self.in_room_now = int(temp[11])
-        self.has_map = bool(int(temp[12]))
-        self.is_being_teleported = bool(int(temp[13]))
-        self.is_fighting = bool(int(temp[14]))
-        self.fighting_counter = int(temp[15])
-
-        if temp[1] == 'warrior':
-            self.character = Warrior()
-            self.character.load(user_id, 'character', folder)
-        if temp[1] == 'mage':
-            self.character = Mage()
-            self.character.load(user_id, 'character', folder)
-
-        self.monster = Player()
-        self.monster.load(user_id, 'monster', folder)
-
-        self.dungeon = game_folder.generate_dungeon.load_dungeon(user_id, folder)
-
-        conn.close()
-
-    
-    def delete(self, user_id, folder='game_folder/'):
-        conn = sqlite3.connect(folder+'game_control.bd')
-        c = conn.cursor()
-        c.execute('DELETE FROM players WHERE user_id = ? LIMIT 1', [user_id])
-        conn.commit()
-        conn.close()
-
-        self.character.delete(user_id, 'character', folder)
-        self.monster.delete(user_id, 'monster', folder)
-        game_folder.generate_dungeon.delete_dungeon(user_id, folder)
-    
-    def save(self, user_id, folder='game_folder/'):
-        conn = sqlite3.connect(folder+'game_control.bd')
-        c = conn.cursor()
-        c.execute('INSERT or REPLACE INTO players VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', 
-            (user_id, self.character.role, int(self.creating_character), int(self.veteran_character),
-             self.last_status, int(self.complete), int(self.dead), str(self.creators), str(self.doom), self.x, 
-                self.y, self.in_room_now, int(self.has_map), int(self.is_being_teleported),
-                 int(self.is_fighting), self.fighting_counter))
-        conn.commit()
-        conn.close()
-
-        self.character.save(user_id, 'character', folder)
-        self.monster.save(user_id, 'monster', folder)
-        game_folder.generate_dungeon.update_dungeon(self.dungeon, user_id, folder)
-
-    def create(self, user_id, folder='game_folder/'):
-        conn = sqlite3.connect(folder+'game_control.bd')
-        c = conn.cursor()
-        c.execute('INSERT or REPLACE INTO players VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', 
-            (int(user_id), str('warrior'), int(False), int(False),
-             int(0), int(False), int(False), str(0), str(0), int(0), 
-                int(0), int(0), int(False), int(False),
-                 int(False), int(4)))
-        conn.commit()
-        conn.close() 
-
-        self.character.create_new(user_id, folder)
-
-    def how_many_rooms_left(self):
-        temp = len(self.dungeon)
-        for i in range(len(self.dungeon)):
-            if self.dungeon[i].is_cleared:
-                temp -= 1
-        return temp
-
-    def check_completion(self):
-        if self.dungeon[-1].is_cleared and self.complete == False:
-            self.complete = True
-            self.character.calculate_score()
-
-    def determine_possible_moves(self):
-        temp = [0,0,0,0]
-        room = self.dungeon[self.in_room_now]
-        for i in range(len(room.neighbours)):
-            if room.neighbours[i] != ' ':
-                next_room = self.dungeon[room.neighbours[i]]
-                if room.coord_x > next_room.coord_x:
-                    temp[0] = u'\U00002B05'
-                if room.coord_y > next_room.coord_y:
-                    temp[1] = u'\U00002B07'
-                if room.coord_y < next_room.coord_y:
-                    temp[2] = u'\U00002B06'
-                if room.coord_x < next_room.coord_x:
-                    temp[3] = u'\U000027A1'
-        
-        temp = list(filter(lambda a: a != 0, temp))
-                
-        return temp
-
-    def move(self, message):
-        if message == u'\U00002B05':
-            self.x -= 1
-        if message == u'\U000027A1':
-            self.x += 1
-        if message == u'\U00002B07':
-            self.y -= 1
-        if message == u'\U00002B06':
-            self.y += 1
-        for i in range(len(self.dungeon)):
-            if self.dungeon[i].coord_x == self.x \
-            and self.dungeon[i].coord_y == self.y:
-
-                self.in_room_now = self.dungeon[i].room_id
-                if self.dungeon[self.in_room_now].is_cleared == False \
-                and self.in_room_now != self.dungeon[-1].room_id:
-                    self.check_for_monster()
-                self.dungeon[self.in_room_now].is_cleared = True
-
-
-    def teleport(self, where_to):
-        if where_to > self.dungeon[-1].room_id or where_to < 0:
-            raise
-        else:
-            for i in range(len(self.dungeon)):
-                if self.dungeon[i].room_id == where_to:
-                    self.x = self.dungeon[i].coord_x
-                    self.y = self.dungeon[i].coord_y
-                    self.in_room_now = self.dungeon[i].room_id
-                    self.is_being_teleported = False
-                    self.dungeon[i].is_cleared = True
-
-                    if self.in_room_now != self.dungeon[-1].room_id:
-                        self.check_for_monster()
-
-                    for j in range(len(self.character.inventory)):
-                        if self.character.inventory[j].description == 'scroll of teleportation':
-                            self.character.inventory.pop(j)
-                            break
-                    break
-
-
-    def check_for_monster(self):
-        if self.dungeon[self.in_room_now].has_monster:
-            self.is_fighting = True
-            self.fighting_counter = 4
-            self.dungeon[self.in_room_now].has_monster = False
-        else:
-            self.fighting_counter -= 1
-            roll = numpy.random.randint(low=0, high=4)
-            if roll > self.fighting_counter:
-                self.is_fighting = True
-                self.fighting_counter = 4
-
-
-class Player:
-    """docstring for Player"""
-    def __init__(self):
-        self.name = '____no_name____'
-        self.race = 'human'
-        self.role = 'warrior'
-        self.strength = 50
-        self.intellect = 50
-        self.endurance = 50
-        self.hp = 5
-        
-        # For monsters: 0 = no monster; 1 = active monster; 2 = stunned monster
-        self.score = 0 
-        self.inventory = []
-        
-
-    def show_inventory(self):
-        temp = []
-        for i in range(len(self.inventory)):
-            temp.append(self.inventory[i].inventory_line())
-        return temp
-
-    def add_to_inventory(self, items):
-        for i in range(len(items)):
-            if items[i].type == 'score':
-                self.score += items[i].equip()
-            else:
-                if items[i].type == 'stats':
-                    self.score += 2
-                self.inventory.append(items[i])
-
-
-    def take_from_inventory(self, desc):
-        for i in range(len(self.inventory)):
-            if desc == self.inventory[i].description:
-                return self.inventory[i]
-
-    def use(self, item):
-        for i in range(len(self.inventory)):
-            if item == self.inventory[i].description:
-                effect, add = self.inventory[i].use()
-                self.inventory.pop(i)
-                if effect == 'strength': 
-                    self.strength += add
-                    return item+' increased your '+effect+' by '+str(add)
-                if effect == 'intellect': 
-                    self.intellect += add
-                    return item+' increased your '+effect+' by '+str(add)
-                if effect == 'endurance': 
-                    self.endurance += add
-                    return item+' increased your '+effect+' by '+str(add)
-                if effect == 'healing':
-                    self.heal(add)
-                    return 'You have healed. Your current hp: '+str(self.hp)
-
-
-    def heal(self, hp):
-        hp_max = int(self.endurance/10) + 1
-        if (self.hp + hp) >= hp_max:
-            self.hp = hp_max
-        else:
-            self.hp += hp
-
-    def set_stats(self, strength, intellect, endurance):
-        self.strength = strength
-        self.intellect = intellect
-        self.endurance = endurance
-        self.hp = int(endurance/10) + 1
-
-    def set_name(self, name):
-        self.name = name
-
-    def set_max_hp(self):
-        self.hp = int(self.endurance/10) + 1
-
-    def calculate_score(self):
-        self.score += 0.1*self.endurance
-        if self.role == 'warrior':
-            self.score += 0.1*self.strength+0.2*self.intellect
-        elif self.role == 'mage':
-            self.score += 0.2*self.strength+0.1*self.intellect
-        self.score = int(self.score)
-
-    def set_up_monster(self, monster):
-        self.score = 1
-        self.name = monster[0] #description
-        self.race = monster[1] #class
-        self.hp = monster[2] 
-        self.strength = monster[3][0] 
-        self.intellect = monster[3][1]
-        self.endurance = monster[3][2]
-        self.role = monster[4]
-
-    def save_to_repository(self, user_id, folder=''):
-        inventory = ''
-        for i in range(len(self.inventory)):
-            inventory += self.inventory[i].save_line()
-            inventory += '\n'
-
-        conn = sqlite3.connect(folder+'character_save.bd')
-        c = conn.cursor()
-        c.execute('INSERT or REPLACE INTO characters VALUES (?,?,?,?,?,?,?,?,?)', 
-            (user_id, self.name, self.race, self.role, self.strength, self.intellect, self.endurance, self.score, inventory))
-        conn.commit()
-        conn.close()
-
-    def load_from_repository(self, user_id, folder=''):
-        conn = sqlite3.connect(folder+'character_save.bd')
-        c = conn.cursor()
-        c.execute('SELECT * FROM characters WHERE user_id = ? LIMIT 1', [user_id]) 
-        temp = c.fetchall() 
-        conn.close()
-
-        temp = temp[0]
-        self.name = temp[1]
-        self.race = temp[2]
-        self.role = temp[3]
-        self.set_stats(temp[4], temp[5], temp[6])
-        self.score = temp[7]
-
-        inventory = temp[8].split(';\n')
-        result = []
-        for i in range(len(inventory)-1):
-            temp = inventory[i].split('\n')
-            x = game_folder.generate_dungeon.Item()
-            x.description = temp[0].split(' = ')[1]
-            x.type = temp[1].split(' = ')[1]
-            x.effect = temp[2].split(' = ')[1]
-            x.add = int(temp[3].split(' = ')[1])
-            result.append(x)
-
-        self.add_to_inventory(result)
-
-    def delete_from_repository(self, user_id, folder=''):
-        conn = sqlite3.connect(folder+'character_save.bd')
-        c = conn.cursor()
-        c.execute('DELETE FROM characters WHERE user_id = ? LIMIT 1', [user_id])
-        conn.commit()
-        conn.close()
-
-    def create_new(self, user_id, folder=''):
-        conn = sqlite3.connect(folder+'game_control.bd')
-        c = conn.cursor()
-        c.execute('INSERT or REPLACE INTO character VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', 
-            (user_id, '____no_name____', 'human', 'warrior', 50, 50, 50, 
-                5, 0, '', 1, 5))
-        c.execute('INSERT or REPLACE INTO monster VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', 
-            (user_id, '____no_name____', 'human', 'warrior', 50, 50, 50, 
-                5, 0, '', '', ''))
-        conn.commit()
-        conn.close()            
-
-    def save(self, user_id, who, folder=''):
-        conn = sqlite3.connect(folder+'game_control.bd')
-        c = conn.cursor()
-
-        if who == 'character':
-            inventory = ''
-            for i in range(len(self.inventory)):
-                inventory += self.inventory[i].save_line()
-                inventory += '\n'
-
-            if self.role == 'warrior':
-                c.execute('INSERT or REPLACE INTO character VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', 
-                    (user_id, self.name, self.race, self.role, self.strength, self.intellect, self.endurance, 
-                        self.hp ,self.score, inventory, int(self.has_used_second_breath), self.stun_cooldown))
-            if self.role == 'mage':
-                c.execute('INSERT or REPLACE INTO character VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', 
-                    (user_id, self.name, self.race, self.role, self.strength, self.intellect, self.endurance, 
-                        self.hp ,self.score, inventory, int(self.has_used_healing), self.fireball_cooldown))
-        if who == 'monster':
-            c.execute('INSERT or REPLACE INTO monster VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', 
-                (user_id, self.name, self.race, self.role, self.strength, self.intellect, self.endurance, 
-                    self.hp ,self.score, '', '', ''))
-            
-        conn.commit()
-        conn.close()
-
-    def load(self, user_id, who, folder=''):
-        conn = sqlite3.connect(folder+'game_control.bd')
-        c = conn.cursor()
-
-        if who == 'character':
-            c.execute('SELECT * FROM character WHERE user_id = ? LIMIT 1', [user_id]) 
-            temp = c.fetchall() 
-            temp = temp[0]
-            self.name = temp[1]
-            self.race = temp[2]
-            self.role = temp[3]
-            self.set_stats(int(temp[4]), int(temp[5]), int(temp[6]))
-            self.hp = int(temp[7])
-            self.score = int(temp[8])
-            if self.role == 'warrior':
-                self.has_used_second_breath = bool(int(temp[10]))
-                self.stun_cooldown = int(temp[11])
-            if self.role == 'mage':
-                self.has_used_healing = bool(int(temp[10]))
-                self.fireball_cooldown = int(temp[11])
-
-            inventory = temp[9].split(';\n')
-            result = []
-            for i in range(len(inventory)-1):
-                temp = inventory[i].split('\n')
-                x = game_folder.generate_dungeon.Item()
-                x.description = temp[0].split(' = ')[1]
-                x.type = temp[1].split(' = ')[1]
-                x.effect = temp[2].split(' = ')[1]
-                x.add = int(temp[3].split(' = ')[1])
-                result.append(x)
-
-            self.add_to_inventory(result)
-
-        if who == 'monster':
-            c.execute('SELECT * FROM monster WHERE user_id = ? LIMIT 1', [user_id]) 
-            temp = c.fetchall() 
-            temp = temp[0]
-            self.name = temp[1]
-            self.race = temp[2]
-            self.role = temp[3]
-            self.set_stats(int(temp[4]), int(temp[5]), int(temp[6]))
-            self.hp = int(temp[7])
-            self.score = int(temp[8])
-
-        conn.close()
-
-    def delete(self, user_id, who, folder=''):
-        conn = sqlite3.connect(folder+'game_control.bd')
-        c = conn.cursor()
-        if who == 'monster':
-            c.execute('DELETE FROM monster WHERE user_id = ? LIMIT 1', [user_id])
-        if who == 'character':
-            c.execute('DELETE FROM character WHERE user_id = ? LIMIT 1', [user_id])
-        conn.commit()
-        conn.close()
-
-
-class Warrior(Player):
-    has_used_second_breath = False
-    stun_cooldown = 5
-
-    def second_breath(self):
-        if self.has_used_second_breath == False:
-            roll = numpy.random.randint(low=2, high=5)
-            self.heal(roll)
-            self.has_used_second_breath = True
-            return 'You have healed '+str(roll)+' hp.\nYour current hp: '+str(self.hp)
-        else:
-            return 0
-
-    def stun(self):
-        if self.stun_cooldown == 5:
-            self.stun_cooldown = 4
-            return 'stun'
-
-    def update(self):
-        temp = [0,0]
-        if self.stun_cooldown == 5:
-            temp[1] = 'Stun attack: stuns opponent for 1 round'
-        if self.stun_cooldown != 5 and self.stun_cooldown != 0:
-            self.stun_cooldown -= 1
-            temp[1] = 'CD: '+str(self.stun_cooldown)
-        if self.stun_cooldown == 0:
-            self.stun_cooldown = 5
-            temp[1] = 'Stun attack: stuns opponent for 1 round'
-
-        if self.has_used_second_breath:
-            temp[0] = 'Used'
-        else:
-            temp[0] = 'Second breath: heals 2-4 hp'
-
-        return temp
-
-
-class Mage(Player):
-    has_used_healing = False
-    fireball_cooldown = 5
-
-    def healing(self):
-        if self.has_used_healing == False:
-            roll = numpy.random.randint(low=2, high=4)
-            self.heal(roll)
-            self.has_used_healing = True
-            return 'You have healed '+str(roll)+' hp.\nYour current hp: '+str(self.hp)
-        else:
-            return 0
-
-    def fireball(self):
-        if self.fireball_cooldown == 5:
-            self.fireball_cooldown = 4
-            return 'fireball'
-
-    def update(self):
-        temp = [0,0]
-        if self.fireball_cooldown == 5:
-            temp[1] = 'Fireball: deals 3 damage'
-        if self.fireball_cooldown != 5 and self.fireball_cooldown != 0:
-            self.fireball_cooldown -= 1
-            temp[1] = 'CD: '+str(self.fireball_cooldown)
-        if self.fireball_cooldown == 0:
-            self.fireball_cooldown = 5
-            temp[1] = 'Fireball: deals 3 damage'
-
-        if self.has_used_healing:
-            temp[0] = 'Used'
-        else:
-            temp[0] = 'Healing spell: heals 2-3 hp'
-
-        return temp
-
-
+from game_folder.game_classes.game_control import game_control
+from game_folder.game_classes.player_classes import Player, Warrior, Mage
+from game_folder.game_classes.dungeon_classes import Room, Furniture, Item
+from game_folder.game_classes.damage_types import Damage
+from game_folder.shop import open_shop
 
 
 def show_status(bot, message):
     game_user = game_control()
     game_user.load(message.from_user.id)
 
-    if message.from_user.id == game_user.user_id:
+    if message.from_user.id == game_user.user_id and game_user.character.name != "____no_name____":
         character_text = 'Name: '+game_user.character.name+\
         '\nRace: '+game_user.character.race+'\nClass: '+game_user.character.role+'\nStrength: '+str(game_user.character.strength)+\
         '\nIntellect: '+str(game_user.character.intellect)+'\nEndurance: '+str(game_user.character.endurance)+\
-        '\nHealth: '+str(game_user.character.hp)+'\nScore: '+str(int(game_user.character.score))
+        '\nHealth: '+str(game_user.character.hp)+'\nScore: '+str(game_user.character.score)+'\nGold: '+str(game_user.character.inventory.gold)
+        
+        damage_type = str(Damage(game_user.character.damage_type)).split('.')[1].lower()
+        character_text += '\nDamage: {0}-{1} {2}'.format(
+            game_user.character.damage_min, game_user.character.damage_max, damage_type)
+
+        character_text += '\nProtection: '
+        for i in range(len(game_user.character.protection)):
+            if game_user.character.protection[i] != 0:
+                damage_type = str(Damage(game_user.character.damage_type)).split('.')[1].lower()
+                character_text += '{0}% {1}'.format(int(game_user.character.protection[i]*100), damage_type)
+        
         bot.send_message(message.chat.id, character_text)
         return 0
-    elif (message.from_user.id == game_user.user_id) == False or game_user.character.name == "____no_name____":
+    else:
         bot.send_message(message.chat.id, 'First create your character')
         return 0
         
@@ -537,7 +46,7 @@ def show_status(bot, message):
 
 
 def spawn_item(description, it_type='consumable', effect='healing', add=1):
-    x = game_folder.generate_dungeon.Item()
+    x = Item()
     x.description = description
     x.type = it_type
     x.effect = effect
@@ -571,6 +80,7 @@ def create_character(bot, message, start):
         if game_user.character.role == 'warrior':
             game_user.choose_class(Warrior())
         if game_user.character.role == 'mage':
+            game_user.character.damage_type = Damage.ARCANE.value
             game_user.choose_class(Mage())
         game_user.save(game_user.user_id)
 
@@ -659,14 +169,15 @@ def create_character(bot, message, start):
     return status_change
 
 
-async def game(bot, message):
+def game(bot, message):
     game_user = game_control()
     game_user.load(message.from_user.id)
     logging.info(message.from_user.first_name+' is playing')
 
     if game_user.creating_character:
         if message.text.lower() == 'yes' and game_user.veteran_character:
-            game_user.creating_character = False
+            game_user.creating_character = False 
+            game_user.last_status = 1 # sending player to shop
             game_user.save(game_user.user_id)
 
             keyboard = telebot.types.ReplyKeyboardMarkup(True)
@@ -693,10 +204,10 @@ async def game(bot, message):
 
         if status_change == False:
             # trying to get some item from storage
-            temp = game_folder.generate_dungeon.Item()
+            temp = Item()
             result = temp.transfer_from_storage(game_user.user_id, folder='game_folder/')
-            if result == 'success':
-                game_user.character.add_to_inventory([temp])
+            if result:
+                game_user.character.add_to_backpack([temp])
                 text = 'You have recieved an item left for you by another player.'+\
                 '\nIt\'s '+temp.description
                 keyboard = telebot.types.ReplyKeyboardMarkup(True)
@@ -708,11 +219,11 @@ async def game(bot, message):
     if len(game_user.dungeon) == 0:
 
         # rewarding for transfered item
-        if len(game_user.character.inventory) != 0 and game_user.veteran_character == False:
-            effect = game_user.character.inventory[0].effect.split(',')
-            game_user.character.inventory[0].effect = effect[0]
-            item_type = game_user.character.inventory[0].type.split(',')
-            game_user.character.inventory[0].type = item_type[0]
+        if len(game_user.character.backpack) != 0 and game_user.veteran_character == False:
+            effect = game_user.character.backpack[0].effect.split(',')
+            game_user.character.backpack[0].effect = effect[0]
+            item_type = game_user.character.backpack[0].type.split(',')
+            game_user.character.backpack[0].type = item_type[0]
             game_user.save(game_user.user_id)
             if message.text == u'\U0001F44D':
                 add_likes(bot, message, int(effect[1]), int(item_type[1]), numpy.random.randint(low=46, high=55))
@@ -720,7 +231,24 @@ async def game(bot, message):
                 add_likes(bot, message, int(effect[1]), int(item_type[1]), numpy.random.randint(low=26, high=35))
 
 
-        oppening, creators, doom = await game_folder.generate_dungeon.main(game_user.character, game_user.user_id,folder='game_folder/')
+
+        # visiting shop
+        if game_user.veteran_character and game_user.last_status == 1:
+            game_user.last_status = 0
+            game_user.in_shop = True
+            game_user.save(game_user.user_id)
+            open_shop(bot, game_user, folder='game_folder/')
+            return 0
+
+        if game_user.in_shop:
+            bot.send_message(game_user.user_id, 'If you want to continue, press close in the shop window')
+            return 0
+
+
+
+        # generating dungeon
+        oppening, creators, doom = game_folder.generate_dungeon.main(game_user.character, 
+            game_user.user_id, folder='game_folder/', veteran=game_user.veteran_character)
         game_user.load(game_user.user_id) # now dungeon part was added to the database
 
         game_user.creators = creators
@@ -729,21 +257,18 @@ async def game(bot, message):
         bot.send_message(game_user.user_id, oppening)
 
         
-        await game_folder.generate_dungeon.draw_dungeon(game_user.dungeon, [game_user.x, game_user.y], game_user.user_id, 
+        buffer = game_folder.generate_dungeon.draw_dungeon(game_user.dungeon, [game_user.x, game_user.y], 
+                                                    game_user.user_id, 
                                                     folder='game_folder/', 
                                                     map_found=game_user.has_map)
-        moves = game_user.determine_possible_moves()
-        keyboard = telebot.types.ReplyKeyboardMarkup(True)
-        keyboard.row(*moves)
-        keyboard.row('Look around', 'Search', 'Inventory')
-        file_name = 'game_folder/dungeon_map_'+str(game_user.user_id)+'.png'
-        bot.send_photo(game_user.user_id, photo=open(file_name, 'rb'), reply_markup=keyboard)
+        keyboard = move_keyboard(game_user)
+        bot.send_photo(game_user.user_id, photo=buffer, reply_markup=keyboard)
         bot.send_message(game_user.user_id, game_user.dungeon[game_user.in_room_now].description)
         return 0
 
 
     if game_user.is_fighting:
-        game_user = await fight(bot, message, game_user)
+        game_user = fight(bot, message, game_user)
         game_user.save(game_user.user_id)
         if game_user.dead:
             return 1
@@ -757,15 +282,15 @@ async def game(bot, message):
             text = 'Winds of magic swirl around you as you finish reading the scroll. '+\
             'You open your eyes in completly different place. '+game_user.dungeon[game_user.in_room_now].description
             
-            await game_folder.generate_dungeon.draw_dungeon(game_user.dungeon, [game_user.x, game_user.y], game_user.user_id, 
+            buffer = game_folder.generate_dungeon.draw_dungeon(game_user.dungeon, [game_user.x, game_user.y], 
+                                                    game_user.user_id,
                                                     folder='game_folder/', 
                                                     map_found=game_user.has_map)
-            file_name = 'game_folder/dungeon_map_'+str(game_user.user_id)+'.png'
-            bot.send_photo(game_user.user_id, photo=open(file_name, 'rb'))
+            bot.send_photo(game_user.user_id, photo=buffer)
 
             game_user.check_completion()
             if game_user.complete:
-                if len(game_user.character.show_inventory()) != 0:
+                if len(game_user.character.show_backpack()) != 0:
                     text = 'Congratulations! You have completed the dungeon.'+\
                     ' Do you want to help other players and leave one of your items for future adventurers?'
                     keyboard = telebot.types.ReplyKeyboardMarkup(True)
@@ -778,35 +303,40 @@ async def game(bot, message):
                     game_user.save(game_user.user_id)
                     return 1
 
-            moves = game_user.determine_possible_moves()
-            game_user.save(game_user.user_id)
 
-            keyboard = telebot.types.ReplyKeyboardMarkup(True)
-            keyboard.row(*moves)
-            keyboard.row('Look around', 'Search', 'Inventory')
+            game_user.save(game_user.user_id)
+            keyboard = move_keyboard(game_user)
             bot.send_message(game_user.user_id, text, reply_markup=keyboard)
+
+            if game_user.is_fighting:
+                game_user = fight(bot, message, game_user)
+                game_user.save(game_user.user_id)
+                if game_user.dead:
+                    return 1
         except:
+            import traceback
             bot.send_message(game_user.user_id, 'Enter the number of the room on the map')
+            traceback.print_exc()
         return 0
 
 
     if game_user.complete:
         if message.text.lower() == 'yes':
-            open_inventory(bot, message, game_user)
+            game_user.last_status = 1
+            open_inventory(bot, game_user)
+            game_user.save(game_user.user_id)
             return 0
         elif message.text.lower() == 'no':
             end_game(bot, message, game_user)
             return 1
-        elif message.text in game_user.character.show_inventory():
-            item = message.text.split(',')[0]
-            item = game_user.character.take_from_inventory(item)
-            item.transfer_to_storage(game_user.user_id, game_user.user_id, folder='game_folder/')
-            end_game(bot, message, game_user)
-            game_user.save(game_user.user_id)
-            return 1
         else:
             bot.send_message(game_user.user_id, 'Select one of the buttons')
 
+
+    # blocks move, look around, search, backpack buttons if backpack is open
+    if game_user.last_status == 1:
+        bot.send_message(game_user.user_id, 'You need to close the backpack to do that')
+        return 0
 
     if message.text.lower() == 'look around':
         bot.send_message(game_user.user_id, game_user.dungeon[game_user.in_room_now].look_around())
@@ -816,63 +346,17 @@ async def game(bot, message):
     if message.text.lower() == 'search':
         items, text = game_user.dungeon[game_user.in_room_now].loot_room()
         if len(items) != 0: 
-            game_user.character.add_to_inventory(items)
+            game_user.character.add_to_backpack(items)
         game_user.save(game_user.user_id)
         bot.send_message(game_user.user_id, text)
         return 0
 
 
-    if message.text.lower() == 'inventory':
-        open_inventory(bot, message, game_user)
-        return 0
-
-
-    if message.text.lower() == 'close':
-        moves = game_user.determine_possible_moves()
-        keyboard = telebot.types.ReplyKeyboardMarkup(True)
-        keyboard.row(*moves)
-        keyboard.row('Look around', 'Search', 'Inventory')
-        bot.send_message(game_user.user_id, 'Inventory closed', reply_markup=keyboard)
-        return 0
-
-
-    
-    if message.text in game_user.character.show_inventory():
-        item = message.text.split(',')[0]
-        if item == 'scroll of teleportation':
-            game_user.is_being_teleported = True
-            text = 'Enter the number of the room to which you wish to be teleported'
-            bot.send_message(game_user.user_id, text)
-            game_user.save(game_user.user_id)
-            return 0
-        elif item == 'map':
-            game_user.has_map = True
-            for i in range(len(game_user.character.inventory)):
-                if game_user.character.inventory[i].description == 'map':
-                    game_user.character.inventory.pop(i)
-                    break
-
-            text = 'Now you have a map, you will know the whole layout!'
-            await game_folder.generate_dungeon.draw_dungeon(game_user.dungeon, [game_user.x, game_user.y], game_user.user_id, 
-                                                    folder='game_folder/', 
-                                                    map_found=game_user.has_map)
-            file_name = 'game_folder/dungeon_map_'+str(game_user.user_id)+'.png'
-            bot.send_photo(game_user.user_id, photo=open(file_name, 'rb'))
-        else:
-            text = game_user.character.use(item)
-
+    if message.text.lower() == 'backpack':
+        game_user.last_status = 1
+        open_inventory(bot, game_user)
         game_user.save(game_user.user_id)
-        inventory = game_user.character.show_inventory()
-        inventory += ['Close']
-        keyboard = telebot.types.ReplyKeyboardMarkup(True)
-        for i in range(len(inventory)):
-            item = str(inventory[i])
-            keyboard.row(item)
-        text += '\n' + game_user.character.name + '\'s inventory:' 
-        bot.send_message(game_user.user_id, text, reply_markup=keyboard)
-        return 0 
-
-
+        return 0
 
 
     moves = game_user.determine_possible_moves()
@@ -882,7 +366,7 @@ async def game(bot, message):
         n = game_user.how_many_rooms_left()
 
         if game_user.complete:
-            if len(game_user.character.show_inventory()) != 0:
+            if len(game_user.character.show_backpack()) != 0:
                 game_user.save(game_user.user_id)
                 text = 'Congratulations! You have completed the dungeon.'+\
                 ' Do you want to help other players and leave one of your items for future adventurers?'
@@ -894,21 +378,17 @@ async def game(bot, message):
                 end_game(bot, message, game_user)
                 return 1
 
-        
-        moves = game_user.determine_possible_moves()
-        keyboard = telebot.types.ReplyKeyboardMarkup(True)
-        keyboard.row(*moves)
-        keyboard.row('Look around', 'Search', 'Inventory')
 
-        await game_folder.generate_dungeon.draw_dungeon(game_user.dungeon, [game_user.x, game_user.y], game_user.user_id, 
+        buffer = game_folder.generate_dungeon.draw_dungeon(game_user.dungeon, [game_user.x, game_user.y], 
+                                                    game_user.user_id,
                                                     folder='game_folder/', 
                                                     map_found=game_user.has_map)
-        file_name = 'game_folder/dungeon_map_'+str(game_user.user_id)+'.png'
-        bot.send_photo(game_user.user_id, photo=open(file_name, 'rb'), reply_markup=keyboard)
+        keyboard = move_keyboard(game_user)
+        bot.send_photo(game_user.user_id, photo=buffer, reply_markup=keyboard)
         bot.send_message(game_user.user_id, game_user.dungeon[game_user.in_room_now].description+'\nYou have '+str(n)+' more unexplored rooms.')
 
         if game_user.is_fighting:
-            game_user = await fight(bot, message, game_user)
+            game_user = fight(bot, message, game_user)
             game_user.save(game_user.user_id)
             if game_user.dead:
                 return 1
@@ -920,22 +400,24 @@ async def game(bot, message):
     logging.info("Recieved: "+ message.text)
 
 
-async def fight(bot, message, game_user):
+def fight(bot, message, game_user):
 
     keyboard = telebot.types.ReplyKeyboardMarkup(True)
     keyboard.row('Attack')
 
 
     if game_user.monster.score == 0:
-        game_user.monster.set_up_monster(await game_folder.generate_dungeon.generate_monster(game_user.dungeon[game_user.in_room_now],
+        game_user.monster.set_up_monster(game_folder.generate_dungeon.generate_monster(game_user.dungeon[game_user.in_room_now],
                                                                          game_user.creators, 
                                                                          game_user.doom,
-                                                                         folder='game_folder/'))
+                                                                         folder='game_folder/',
+                                                                         veteran=game_user.veteran_character))
         bot.send_message(game_user.user_id, 'In the room you see '+game_user.monster.name)
-        hp_bar = 'Opponents hp: '+'#'*int(game_user.monster.hp) + '\n\nYour hp: '+'#'*int(game_user.character.hp)
-        bot.send_message(game_user.user_id, hp_bar)
+        hp_bar = 'Opponents hp: *{0}/{1}* \nYour hp: *{2}/{3}*'.format(
+            game_user.monster.hp, game_user.monster.max_hp, game_user.character.hp, game_user.character.max_hp)
+        bot.send_message(game_user.user_id, hp_bar, parse_mode='Markdown')
 
-        abilities = game_user.character.update()
+        abilities = game_user.character.update(start=True)
         keyboard.row(*abilities)
         bot.send_message(game_user.user_id, 'What do you want to do?', reply_markup=keyboard)
         return game_user
@@ -943,28 +425,30 @@ async def fight(bot, message, game_user):
         if message.text.lower() == 'attack':
 
             # player block
-            dmg = numpy.random.randint(low=1, high=3)
+            dmg = numpy.random.randint(low=game_user.character.damage_min, high=game_user.character.damage_max+1)
             text = ''
             if game_user.character.role == 'warrior':
                 roll_to_hit = roll(game_user.character.strength)
                 if roll_to_hit == 0:
-                    dmg = 3 #critical hit
+                    dmg = 6 #critical hit
                     text = 'It\'s a critical hit! '
                 if roll_to_hit < 3:
-                    text += 'You slash and deal '+str(dmg)+' damage.'
-                    game_user.monster.hp -= dmg
+                    damage_type = str(Damage(game_user.character.damage_type)).split('.')[1].lower()
+                    dmg = game_user.monster.take_damage(dmg, game_user.character.damage_type)
+                    text += '*{0}* strikes and deals {1} {2} damage.'.format(game_user.character.name.capitalize(), dmg, damage_type)
                 else:
-                    text = 'You miss!'
+                    text = '*{0}* miss!'.format(game_user.character.name.capitalize())
             if game_user.character.role == 'mage':
                 roll_to_hit = roll(game_user.character.intellect)
                 if roll_to_hit == 0:
-                    dmg = 3 #critical hit
+                    dmg = 6 #critical hit
                     text = 'It\'s a critical hit! '
                 if roll_to_hit < 3:
-                    text += 'You launch magic missiles and deal '+str(dmg)+' damage.'
-                    game_user.monster.hp -= dmg
+                    damage_type = str(Damage(game_user.character.damage_type)).split('.')[1].lower()
+                    dmg = game_user.monster.take_damage(dmg, game_user.character.damage_type)
+                    text += '*{0}* launches magic missiles and deals {1} {2} damage.'.format(game_user.character.name.capitalize(), dmg, damage_type)
                 else:
-                    text = 'You miss!'
+                    text = '*{0}* miss!'.format(game_user.character.name.capitalize())
 
 
             # monster block
@@ -974,18 +458,19 @@ async def fight(bot, message, game_user):
 
             abilities = game_user.character.update()
             keyboard.row(*abilities)
-            bot.send_message(game_user.user_id, text, reply_markup=keyboard)
+            bot.send_message(game_user.user_id, text, reply_markup=keyboard, parse_mode='Markdown')
 
             if game_user.character.hp <= 0:
                 game_user = hero_dies(bot, message, game_user)
                 return game_user
 
             if game_user.monster.hp <= 0:
-                game_user = await monster_dies(bot, message, game_user)
+                game_user = monster_dies(bot, message, game_user)
                 return game_user
 
-            hp_bar = 'Opponents hp: '+'#'*int(game_user.monster.hp) + '\n\nYour hp: '+'#'*int(game_user.character.hp)
-            bot.send_message(game_user.user_id, hp_bar)
+            hp_bar = 'Opponents hp: *{0}/{1}* \nYour hp: *{2}/{3}*'.format(
+                game_user.monster.hp, game_user.monster.max_hp, game_user.character.hp, game_user.character.max_hp)
+            bot.send_message(game_user.user_id, hp_bar, parse_mode='Markdown')
 
             return game_user
 
@@ -1002,7 +487,7 @@ async def fight(bot, message, game_user):
                     bot.send_message(game_user.user_id, 'Stun attack is currently on a cooldown')
                     return game_user
 
-            if message.text.lower() == 'second breath: heals 2-4 hp':
+            if message.text.lower() == 'second breath: heals 4-8 hp':
                 text = game_user.character.second_breath()
                 if text != 0:
                     abilities = game_user.character.update()
@@ -1014,24 +499,27 @@ async def fight(bot, message, game_user):
                     return game_user
 
         if game_user.character.role == 'mage':
-            if message.text.lower() == 'fireball: deals 3 damage':
+            if message.text.lower() == 'fireball: deals 6 damage':
                 fireball = game_user.character.fireball()
                 if fireball == 'fireball':
-                    game_user.monster.hp -= 3
+                    dmg = game_user.monster.take_damage(6, Damage.FIRE.value)
 
-                    text = 'You launch fireball setting opponent on fire. He recieves 3 damage'
+                    text = '*{0}* launches fireball setting opponent on fire. He recieves {1} {2} damage'.format(game_user.character.name.capitalize(), dmg, 'fire')
                     game_user, text = monster_attacks(game_user, text)
 
                     abilities = game_user.character.update()
                     keyboard.row(*abilities)
-                    bot.send_message(game_user.user_id, text, reply_markup=keyboard)
+                    bot.send_message(game_user.user_id, text, reply_markup=keyboard, parse_mode='Markdown')
+                    hp_bar = 'Opponents hp: *{0}/{1}* \nYour hp: *{2}/{3}*'.format(
+                        game_user.monster.hp, game_user.monster.max_hp, game_user.character.hp, game_user.character.max_hp)
+                    bot.send_message(game_user.user_id, hp_bar, parse_mode='Markdown')
 
                     if game_user.character.hp <= 0:
                         game_user = hero_dies(bot, message, game_user)
                         return game_user
 
                     if game_user.monster.hp <= 0:
-                        game_user = await monster_dies(bot, message, game_user)
+                        game_user = monster_dies(bot, message, game_user)
                         return game_user
 
                     return game_user
@@ -1039,7 +527,7 @@ async def fight(bot, message, game_user):
                     bot.send_message(game_user.user_id, 'Fireball is currently on a cooldown')
                     return game_user
 
-            if message.text.lower() == 'healing spell: heals 2-3 hp':
+            if message.text.lower() == 'healing spell: heals 4-6 hp':
                 text = game_user.character.healing()
                 if text != 0:
                     abilities = game_user.character.update()
@@ -1050,30 +538,27 @@ async def fight(bot, message, game_user):
                     bot.send_message(game_user.user_id, 'You have already used healing spell')
                     return game_user
 
-        if (message.text.lower() in ['attack', 'healing spell: heals 2-3 hp', 'fireball: deals 3 damage', 
-            'stun attack: stuns opponent for 1 round', 'second breath: heals 2-4 hp']) == False:
+        if (message.text.lower() in ['attack', 'healing spell: heals 4-6 hp', 'fireball: deals 6 damage', 
+            'stun attack: stuns opponent for 1 round', 'second breath: heals 4-8 hp']) == False:
             bot.send_message(game_user.user_id, 'Use options available on the buttons')
             return game_user
 
 
 
 
-async def monster_dies(bot, message, game_user):
+def monster_dies(bot, message, game_user):
     game_user.is_fighting = False
     game_user.character.score += 5
     game_user.monster.score = 0
     text = 'Your final hit finishes off '+game_user.monster.race+'. You walk victoriously away from the battle.'
 
-    moves = game_user.determine_possible_moves()
-    keyboard = telebot.types.ReplyKeyboardMarkup(True)
-    keyboard.row(*moves)
-    keyboard.row('Look around', 'Search', 'Inventory')
+    keyboard = move_keyboard(game_user)
 
-    await game_folder.generate_dungeon.draw_dungeon(game_user.dungeon, [game_user.x, game_user.y], game_user.user_id, 
-                                                folder='game_folder/', 
-                                                map_found=game_user.has_map)
-    file_name = 'game_folder/dungeon_map_'+str(game_user.user_id)+'.png'
-    bot.send_photo(game_user.user_id, photo=open(file_name, 'rb'))
+    buffer = game_folder.generate_dungeon.draw_dungeon(game_user.dungeon, [game_user.x, game_user.y], 
+                                                    game_user.user_id, 
+                                                    folder='game_folder/', 
+                                                    map_found=game_user.has_map)
+    bot.send_photo(game_user.user_id, photo=buffer)
     bot.send_message(game_user.user_id, text, reply_markup=keyboard)
     return game_user
 
@@ -1084,7 +569,8 @@ def hero_dies(bot, message, game_user):
     text = 'The final hit was too much for your feeble body. Your legs don\'t support you anymore, you fall down on the ground and die.\n'
     text += 'Another life that won\'t be remembered...'
     bot.send_message(game_user.user_id, text)
-    bot.send_message(game_user.user_id, 'GAME OVER')
+    bot.send_message(game_user.user_id, '*GAME OVER*', parse_mode='Markdown')
+    bot.send_message(game_user.user_id, 'Try again?.. \n/game')
     return game_user
 
 
@@ -1092,47 +578,139 @@ def monster_attacks(game_user, text):
     if game_user.monster.score == 3 or game_user.monster.score == 2: # stunned
         game_user.monster.score -= 1
     else:
-        dmg = numpy.random.randint(low=1, high=3)
+        dmg = numpy.random.randint(low=game_user.monster.damage_min, high=game_user.monster.damage_max+1)
         text += '\n'
 
         if game_user.monster.role == 'warrior':
             roll_to_hit = roll(game_user.monster.strength)
             if roll_to_hit == 0:
-                dmg = 3 #critical hit
+                dmg = 6 #critical hit
                 text += 'Opponent deals a critical hit! '
             if roll_to_hit < 3:
-                text += game_user.monster.race+' blows a series of hits and deals '+str(dmg)+' damage to you.'
-                game_user.character.hp -= dmg
+                damage_type = str(Damage(game_user.monster.damage_type)).split('.')[1].lower()
+                dmg = game_user.character.take_damage(dmg, game_user.monster.damage_type)
+                text += '*{0}* blows a series of hits and deals {1} {2} damage to you.'.format(game_user.monster.race.capitalize(), dmg, damage_type)
             else:
-                text += 'Opponent misses!'
+                text += '*{0}* misses!'.format(game_user.monster.race.capitalize())
 
         if game_user.monster.role == 'mage':
             roll_to_hit = roll(game_user.monster.intellect)
             if roll_to_hit == 0:
-                dmg = 3 #critical hit
+                dmg = 6 #critical hit
                 text += 'Opponent deals a critical hit! '
             if roll_to_hit < 3:
-                text += 'Using arcane powers '+game_user.monster.race+' deals '+str(dmg)+' damage to you.'
-                game_user.character.hp -= dmg
+                damage_type = str(Damage(game_user.monster.damage_type)).split('.')[1].lower()
+                dmg = game_user.character.take_damage(dmg, game_user.monster.damage_type)
+                text += 'Using arcane powers *{0}* deals {1} {2} damage to you.'.format(game_user.monster.race.capitalize(), dmg, damage_type)
             else:
-                text += 'Opponent misses!'
+                text += '*{0}* misses!'.format(game_user.monster.race.capitalize())
 
     return game_user, text
 
 
-def open_inventory(bot, message, game_user):
-    inventory = game_user.character.show_inventory()
-    if game_user.complete == False: 
-        inventory += ['Close']
+def open_inventory(bot, game_user):
+    backpack = game_user.character.show_backpack()
+    callback_data = []
+    for i in backpack:
+        callback_data.append(i[:50])
 
-    keyboard = telebot.types.ReplyKeyboardMarkup(True)
-    for i in range(len(inventory)):
-        item = str(inventory[i])
-        keyboard.row(item)
-    text = game_user.character.name + '\'s inventory:' 
+    if game_user.complete == False: 
+        backpack += ['Close']
+        callback_data += ['close']
+
+    keyboard = telebot.types.InlineKeyboardMarkup(True)
+    for i in range(len(backpack)):
+        button = telebot.types.InlineKeyboardButton(backpack[i], callback_data=callback_data[i])
+        keyboard.row(button)
+    text = game_user.character.name + '\'s backpack:' 
     bot.send_message(game_user.user_id, text, reply_markup=keyboard)
     return 0
 
+
+def inventory_buttons(bot, call):
+    game_user = game_user = game_control()
+    game_user.load(call.from_user.id)
+
+
+    if game_user.complete and call.data in game_user.character.show_backpack():
+        game_user.last_status = 0
+        item = call.data.split(',')[0]
+        item = game_user.character.take_from_backpack(item)
+        item.transfer_to_storage(game_user.user_id, game_user.user_id, folder='game_folder/')
+        end_game(bot, call, game_user) # I send call here instead of message, but it should work
+        game_user.save(game_user.user_id)
+        return 1
+
+
+    if call.data.lower() == 'close' and game_user.last_status == 1:
+        game_user.last_status = 0
+        keyboard = move_keyboard(game_user)
+        game_user.save(game_user.user_id)
+        bot.delete_message(chat_id=game_user.user_id, message_id=call.message.message_id)
+        bot.send_message(game_user.user_id, 'Backpack closed', reply_markup=keyboard)
+        return 0
+
+
+
+    backpack = game_user.character.show_backpack()
+    callback_data = []
+    for i in backpack:
+        callback_data.append(i[:50])
+
+    if call.data in callback_data and game_user.last_status == 1:
+        idx = callback_data.index(call.data)
+        item = backpack[idx].split(',')[0]
+        if item[0] == '(':
+            item = item.split(')')[1]
+            item = item[1:]
+        if item == 'scroll of teleportation':
+            game_user.is_being_teleported = True
+            game_user.last_status = 0
+            text = 'Enter the number of the room to which you wish to be teleported'
+            bot.send_message(game_user.user_id, text)
+            game_user.save(game_user.user_id)
+            return 0
+        elif item == 'map':
+            game_user.has_map = True
+            for i in range(len(game_user.character.backpack)):
+                if game_user.character.backpack[i].description == 'map':
+                    game_user.character.backpack.pop(i)
+                    break
+
+            text = 'Now you have a map, you will know the whole layout!'
+            buffer = game_folder.generate_dungeon.draw_dungeon(game_user.dungeon, [game_user.x, game_user.y], 
+                                                    game_user.user_id,
+                                                    folder='game_folder/', 
+                                                    map_found=game_user.has_map)
+            bot.send_photo(game_user.user_id, photo=buffer)
+        else:
+            text = game_user.character.use(item)
+
+        bot.send_message(game_user.user_id, text)
+        game_user.last_status = 1
+        
+
+
+        backpack = game_user.character.show_backpack()
+        callback_data = []
+        for i in backpack:
+            callback_data.append(i[:50])
+
+        if game_user.complete == False: 
+            backpack += ['Close']
+            callback_data += ['close']
+
+        keyboard = telebot.types.InlineKeyboardMarkup(True)
+        for i in range(len(backpack)):
+            button = telebot.types.InlineKeyboardButton(backpack[i], callback_data=callback_data[i])
+            keyboard.row(button)
+        text = game_user.character.name + '\'s backpack:' 
+        bot.edit_message_text(chat_id=game_user.user_id, message_id=call.message.message_id, text=text, reply_markup=keyboard)
+        game_user.save(game_user.user_id)
+        return 0 
+    else:
+        bot.send_message(call.from_user.id, 'Backpack menu is inactive right now.')
+        return 0
 
 def end_game(bot, message, game_user):
     game_user.character.save_to_repository(game_user.user_id, folder='game_folder/')
@@ -1154,6 +732,7 @@ def end_game(bot, message, game_user):
 
 
 def roll(hero_stat):
+    hero_stat = 100*(1-numpy.exp(-hero_stat/72.13))
     dice = numpy.random.randint(low=1, high=101, size=1)
     # 2 = regular success; 1 = hard success; 0 = extreme success; 3 = fail
     if dice <= hero_stat: 
@@ -1166,6 +745,13 @@ def roll(hero_stat):
     else: 
         return 3
 
+
+def move_keyboard(game_user):
+    moves = game_user.determine_possible_moves()
+    keyboard = telebot.types.ReplyKeyboardMarkup(True)
+    keyboard.row(*moves)
+    keyboard.row('Look around', 'Search', 'Backpack')
+    return keyboard
 
 
 def ratings(message, new_score, character_name, new_likes):

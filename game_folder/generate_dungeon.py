@@ -4,199 +4,13 @@ import matplotlib.patches as patches
 import sqlite3
 import sys
 import logging
+import io
 
 
-class Room:
-    """docstring for Room"""
-    def __init__(self):
-        self.room_id = 0
-        self.purpose = ' '*100
-        self.chamber_state = ' '*100
-        self.air = ' '*100
-        self.description = ' '*300
-        self.content = [Furniture(), Furniture(), Furniture(), Furniture()]
-        self.neighbours = [' ', ' ', ' ', ' ']
-        self.coord_x = 0
-        self.coord_y = 0
-        self.is_cleared = False
-        self.has_monster = False
-
-    def add_neigbour(self, neighbour_id):
-        for i in range(len(self.neighbours)):
-            if self.neighbours[i] == neighbour_id:
-                break
-            if self.neighbours[i] == ' ':
-                self.neighbours[i] = neighbour_id
-                break
-
-    def number_of_neighbours(self):
-        c = 0
-        for i in range(4):
-            if self.neighbours[i] != ' ':
-                c += 1
-        return c
-
-    def set_coordinates(self, x, y):
-        self.coord_x = x
-        self.coord_y = y
-
-    def look_around(self):
-        c = []
-        for i in range(3):
-            if self.content[i].description != ' '*100:
-                c.append(i)
-
-        if len(c) == 0:
-            return 'There is nothing of interest in this room.'
-        else:
-            text = 'You see '
-            for i in c:
-                text += self.content[i].description
-                if i != c[-1]:
-                    text += ', '
-                else:
-                    text += '.'
-            return text
-
-    def loot_room(self):
-        temp = []
-        for i in range(3):
-            if self.content[i].is_container == True:
-                temp.append(self.content[i].take_item())
-        if len(temp) == 0:
-            text = 'There is nothing of value in this room.'
-        else:
-            text = 'You have found '
-            for i in range(len(temp)):
-                text += temp[i].description
-                if i != len(temp)-1:
-                    text += ', '
-        return temp, text
-
-    def load(self, furn, item):
-        furn = furn.split(';\n')[:-1]
-        for i in range(len(furn)):
-            furniture = furn[i].split('\n')
-            self.content[i].description = furniture[0].split(' = ')[1]
-            self.content[i].is_container = bool(int(furniture[1].split(' = ')[1]))
-
-        if len(item) != 0:
-            item = item.split(';\n')[:-1]
-            j = 0
-            for i in range(len(self.content)):
-                if self.content[i].is_container:
-                    temp = item[j].split('\n')
-                    self.content[i].content.description = temp[0].split(' = ')[1]
-                    self.content[i].content.type = temp[1].split(' = ')[1]
-                    self.content[i].content.effect = temp[2].split(' = ')[1]
-                    self.content[i].content.add = int(temp[3].split(' = ')[1])
-                    j += 1
-
-
-
-class Furniture:
-    """docstring for Furniture"""
-    def __init__(self):
-        self.description = ' '*100
-        self.is_container = False
-        self.content = Item()
-
-    def take_item(self):
-        if self.is_container == True:
-            item = self.content
-            self.is_container = False
-            self.content = 0
-            return item
-
-    def put_item(self, item):
-        if self.is_container == False:
-            self.content = item
-            self.is_container == True
-
-    def save_line(self):
-        text = 'description = '+self.description+'\n'
-        text+= 'is_container = '+str(int(self.is_container))+';'
-        return text
-            
-
-
-class Item:
-    def __init__(self):
-        self.description = ' '*100
-        # ['score', 'stats', 'consumable']
-        self.type = 'score'
-        # ['healing', 'travel']
-        self.effect = 0
-        self.add = 0
-
-    def use(self):
-        if self.type == 'consumable':
-            return self.effect, self.add
-        if self.type == 'stats':
-            return self.effect, self.add
-
-    def equip(self):
-        if self.type == 'score':
-            return self.add
-        
-
-    def inventory_line(self):
-        if self.type != 'score':
-            text = self.description
-            if self.type == 'stats':
-                text += ', +'+str(self.add)+' '+self.effect
-            if self.type == 'consumable':
-                if self.effect == 'healing':
-                    text += ', restores '+str(self.add)+' hp'
-                if self.effect == 'travel':
-                    if self.description == 'scroll of teleportation':
-                        text += ', teleports you into any room'
-                    if self.description == 'map':
-                        text += ', shows purpose of all rooms'
-            return text
-
-    def save_line(self):
-        text = 'description = '+self.description+'\n'
-        text+= 'type = '+self.type+'\n'
-        text+= 'effect = '+self.effect+'\n'
-        text+= 'add = '+str(self.add)+';'
-        return text
-
-
-    def transfer_to_storage(self, user_id, user_chat_id, folder=''):
-        conn = sqlite3.connect(folder+'item_storage.bd')
-        c = conn.cursor()
-        c.execute('SELECT * FROM items')
-        temp = c.fetchall()  
-        row_id = len(temp)+1
-        c.execute('INSERT INTO items VALUES (?,?,?,?,?,?,?)', 
-            (self.description, self.type, str(self.effect), self.add, user_id, user_chat_id, row_id))
-        conn.commit()
-        conn.close()
-
-    def transfer_from_storage(self, user_id, folder=''):
-        conn = sqlite3.connect(folder+'item_storage.bd')
-        c = conn.cursor()
-        c.execute('SELECT * FROM items WHERE user_id != ?', [user_id])
-        temp = c.fetchall()   
-
-        if len(temp) == 0:
-            conn.close()
-            return 'nothing to transfer'
-        else:
-            roll = numpy.random.randint(low=0, high=len(temp))
-            temp = temp[roll]
-
-            c.execute('DELETE FROM items WHERE id = ? LIMIT 1', [temp[6]])
-            conn.commit()
-            conn.close()
-
-            self.description = temp[0]
-            self.type = temp[1]+', '+str(temp[5])
-            self.effect = temp[2]+', '+str(temp[4])
-            self.add = temp[3]
-            
-            return 'success'
+from game_folder.game_classes.dungeon_classes import Room, Furniture, Item
+from game_folder.game_classes.game_control import set_dungeon
+from game_folder.game_classes.damage_types import determine_damage_type, determine_damage_type_from_weapon
+from game_folder.generate_item import random_consumable, random_stats
 
 
 def clean_file(file_name):
@@ -652,13 +466,6 @@ def generate_room(room, purpose_meta, folder):
                     
 
 def fill_containers(room, player_class, folder):
-    consumables = ['potion of healing', 'great potion of healing', 'scroll of teleportation', 'map']
-    if player_class == 'warrior':
-        weapons = ['sword', 'shield', 'plate', 'mail', 'axe', 'mace', 'spear', 'warhammer', 'maul', \
-        'glaive', 'halberd', 'scimitar', 'dagger']
-    if player_class == 'mage':
-        weapons = ['cap', 'hood', 'hat', 'robe', 'stick', 'staff', 'wand', 'rod', 'sword', \
-        'mantle', 'cloak', 'ring']
 
     general = ['azurite gem', 'blue quartz', 'eye agate', 'lapis lazuli', 'malachite', 'tiger eye', \
     'turquoise', 'onyx', 'moonstone', 'citrine', 'zircon', 'amber', 'amethyst', 'jade', 'pearl', 'silver ewer', \
@@ -672,34 +479,11 @@ def fill_containers(room, player_class, folder):
             roll_meta = numpy.random.randint(low=0, high=4)
 
             if roll_meta <= 1:
-                roll = numpy.random.randint(low=0, high=len(consumables))
-                room.content[i].content.description = consumables[roll]
-                room.content[i].content.type = 'consumable'
-                if roll < 2:
-                    room.content[i].content.effect = 'healing'
-                    if roll == 0:
-                        room.content[i].content.add = 2
-                    if roll == 1:
-                        room.content[i].content.add = 4
-                if roll == 2 or roll == 3:
-                    room.content[i].content.effect = 'travel'
+                room.content[i].content = random_consumable()
 
                 
             if roll_meta == 2 or 'weapon' in room.content[i].description.split():
-                roll = numpy.random.randint(low=0, high=len(weapons))
-                room.content[i].content.description = random_material(weapons[roll], metal=True)
-                room.content[i].content.type = 'stats'
-                roll_stat = numpy.random.randint(low=0, high=3)
-                roll_add = numpy.random.randint(low=1, high=5)
-                if roll_stat == 0:
-                    room.content[i].content.effect = 'strength'
-                    room.content[i].content.add = roll_add
-                if roll_stat == 1:
-                    room.content[i].content.effect = 'intellect'
-                    room.content[i].content.add = roll_add
-                if roll_stat == 2:
-                    room.content[i].content.effect = 'endurance'
-                    room.content[i].content.add = roll_add
+                room.content[i].content = random_stats(player_class)
 
             if roll_meta == 3 or 'bookshelf' in room.content[i].description.split():
                 roll = numpy.random.randint(low=0, high=101)
@@ -721,33 +505,25 @@ def fill_containers(room, player_class, folder):
                 else:
                     roll = numpy.random.randint(low=9, high=46)
                     room.content[i].content.description = 'a sack of '+str(roll)+' gold coins'
-                    room.content[i].content.add = int(roll/45*5)
+                    room.content[i].content.add = roll
 
-            if 'office' in room.purpose.split() or 'observatory' in room.purpose.split():
+            if 'observatory' in room.purpose.split():
                 if ('bookshelf' in room.content[i].description.split()) == False and map_flag:
-                    room.content[i].content.description = 'map'
-                    room.content[i].content.type = 'consumable'
-                    room.content[i].content.effect = 'travel'
+                    room.content[i].content = random_consumable(not_random='map')
                     map_flag = False
 
             if 'laboratory' in room.purpose.split():
                 roll = numpy.random.randint(low=0, high=2)
-                room.content[i].content.description = consumables[roll]
-                room.content[i].content.type = 'consumable'
-                room.content[i].content.effect = 'healing'
                 if roll == 0:
-                    room.content[i].content.add = 2
+                    room.content[i].content = random_consumable(not_random='potion of healing')
                 if roll == 1:
-                    room.content[i].content.add = 4
+                    room.content[i].content = random_consumable(not_random='great potion of healing')
 
 
     return room
     
 
-
-
-
-async def draw_dungeon(dungeon, player, k, folder='', map_found=False):
+def draw_dungeon(dungeon, player, k, folder='', map_found=False):
     fig, ax = plt.subplots(1, frameon=False, figsize=(4,4))
     ax.xaxis.set_visible(False) 
     ax.yaxis.set_visible(False) 
@@ -762,11 +538,14 @@ async def draw_dungeon(dungeon, player, k, folder='', map_found=False):
     for i in range(len(dungeon)):
         x = dungeon[i].coord_x/5 + 0.01
         y = dungeon[i].coord_y/5 + 0.01
-        rect = patches.Rectangle((x-0.005, y-0.005), 0.19, 0.19, edgecolor='black', facecolor='darkgrey')
-        ax.add_patch(rect)
+        
         if dungeon[i].is_cleared:
+            rect = patches.Rectangle((x-0.005, y-0.005), 0.19, 0.19, edgecolor='black', facecolor='darkgrey')
+            ax.add_patch(rect)
             rect = patches.Rectangle((x, y), 0.18, 0.18, edgecolor='black', facecolor='silver')
-        else:
+        elif map_found:
+            rect = patches.Rectangle((x-0.005, y-0.005), 0.19, 0.19, edgecolor='black', facecolor='darkgrey')
+            ax.add_patch(rect)
             rect = patches.Rectangle((x, y), 0.18, 0.18, edgecolor='black', facecolor='grey')
         ax.add_patch(rect)
 
@@ -782,39 +561,48 @@ async def draw_dungeon(dungeon, player, k, folder='', map_found=False):
             else:
                 ax.text(x+0.005,y+0.008, str(purpose_meta[0]), size=8.5)
             ax.text(x+0.005,y+0.041, str(dungeon[i].room_id))
-        else:
+        elif dungeon[i].is_cleared:
             ax.text(x+0.005,y+0.005, str(dungeon[i].room_id))
 
 
-        nbs = dungeon[i].neighbours
-        index, = numpy.where(nbs != ' ')
+        if dungeon[i].is_cleared or map_found:
 
-        for j in range(len(index)):
-            if dungeon[int(nbs[index[j]])].coord_x == dungeon[i].coord_x:
-                x = dungeon[i].coord_x/5 + 0.075
-                if dungeon[int(nbs[index[j]])].coord_y > dungeon[i].coord_y:
-                    y = dungeon[int(nbs[index[j]])].coord_y/5 - 0.015
+            nbs = dungeon[i].neighbours
+            index = [i for i in nbs if i != ' ']
+
+            for j in index:
+                # horizontal neighbours
+                if dungeon[j].coord_x == dungeon[i].coord_x:
+                    x = dungeon[i].coord_x/5 + 0.075
+                    if dungeon[j].coord_y > dungeon[i].coord_y:
+                        y = dungeon[j].coord_y/5 - 0.015
+                    else:
+                        y = dungeon[i].coord_y/5 - 0.015
+                    rect = patches.Rectangle((x, y), 0.05, 0.03, edgecolor='black', facecolor='brown')
+                # vertical neighbours
                 else:
-                    y = dungeon[i].coord_y/5 - 0.015
-                rect = patches.Rectangle((x, y), 0.05, 0.03, edgecolor='black', facecolor='brown')
-            else:
-                y =  dungeon[i].coord_y/5 + 0.075
-                if dungeon[int(nbs[index[j]])].coord_x > dungeon[i].coord_x:
-                    x = dungeon[int(nbs[index[j]])].coord_x/5 - 0.015
-                else: 
-                    x = dungeon[i].coord_x/5 - 0.015
-                rect = patches.Rectangle((x, y), 0.03, 0.05, edgecolor='black', facecolor='brown')
+                    y =  dungeon[i].coord_y/5 + 0.075
+                    if dungeon[j].coord_x > dungeon[i].coord_x:
+                        x = dungeon[j].coord_x/5 - 0.015
+                    else: 
+                        x = dungeon[i].coord_x/5 - 0.015
+                    rect = patches.Rectangle((x, y), 0.03, 0.05, edgecolor='black', facecolor='brown')
 
-            ax.add_patch(rect)
+                ax.add_patch(rect)
 
     circle = patches.Circle((player[0]/5 + 0.1, player[1]/5 + 0.1), 0.04, edgecolor='red', facecolor='salmon')
     ax.add_patch(circle)
     arrow = patches.Arrow(dungeon[-1].coord_x/5 + 0.1, dungeon[-1].coord_y/5 + 0.12, 0, -0.04, width=0.1, edgecolor='black', facecolor='green')
     ax.add_patch(arrow)
-    plt.tight_layout(rect=(-0.05, -0.03, 1.03, 1.03))
-    name = folder+'dungeon_map_'+str(k)+'.png'
-    plt.savefig(name)
-    plt.close()
+    fig.tight_layout(rect=(-0.05, -0.03, 1.03, 1.03))
+
+    buffer = io.BytesIO()
+
+    fig.savefig(buffer, format='png')
+    plt.close(fig)
+
+    buffer.seek(0)
+    return buffer
 
 
 def random_material(this_object, metal=False, wood=False, stone=False, fabric=False):
@@ -926,7 +714,7 @@ def random_name(folder=''):
 
 
 
-async def main(player, user_id, folder=''):
+def main(player, user_id, folder='', veteran=False):
     text, purpose, creators, history = generate_outlines(folder)
 
     d = []
@@ -943,15 +731,15 @@ async def main(player, user_id, folder=''):
 
     for i in range(len(d)):
         d[i] = generate_room(d[i], purpose, folder)
-        d[i] = fill_containers(d[i], player.role, folder)  
+        d[i] = fill_containers(d[i], player.role, folder)
 
-    d = set_monsters(d)  
+    d = set_monsters(d, veteran)  
     set_dungeon(d, user_id, folder)
 
     return text, creators, history
 
 
-def set_monsters(dungeon):
+def set_monsters(dungeon, veteran=False):
     for i in range(len(dungeon)):
         room = dungeon[i].purpose.split()
         
@@ -965,10 +753,19 @@ def set_monsters(dungeon):
             if roll < 50:
                 dungeon[i].has_monster = True
 
+        if veteran:
+            if 'throne' in room or 'vault' in room:
+                dungeon[i].has_monster = True
+            if 'laboratory' in room or 'tortue' in room or 'prison' in room:
+                roll = numpy.random.randint(low=0, high=101)
+                if roll < 50:
+                    dungeon[i].has_monster = True
+
+
     return dungeon
 
 
-async def generate_monster(room, creators, doom, folder=''):
+def generate_monster(room, creators, doom, folder='', veteran=False):
     invaders_flag = False; undead_flag = False; divine_flag = False
     magic_flag = False; alien_flag = False; beast_flag = False
     epic_flag = False
@@ -994,7 +791,8 @@ async def generate_monster(room, creators, doom, folder=''):
     if 'conjuration' in room or 'planar' in room or 'conjuring' in room:
         alien_flag = True
 
-    if 'guardroom' in room or 'barracks' in room or 'watchroom' in room:
+    if 'guardroom' in room or 'barracks' in room or 'watchroom' in room or 'vault' in room \
+    or 'prison' in room:
         invaders_flag = True
 
     if 'kennel' in room or 'zoo' in room or 'bestiary' in room or 'lair' in room:
@@ -1003,6 +801,10 @@ async def generate_monster(room, creators, doom, folder=''):
     if 'crypt' in room or 'tomb' in room: 
         undead_flag = True
 
+    if veteran:
+        if 'throne' in room or 'vault' in room:
+            epic_flag = True
+
 
     if invaders_flag == False and undead_flag == False and divine_flag == False \
     and magic_flag == False and alien_flag == False and beast_flag == False:
@@ -1010,7 +812,9 @@ async def generate_monster(room, creators, doom, folder=''):
         beast_flag = True
 
     roll = numpy.random.randint(low=0, high=101)
-    if roll < 5:
+    if veteran and roll < 25:
+        epic_flag = True
+    elif roll < 5:
         epic_flag = True
 
 
@@ -1039,7 +843,7 @@ async def generate_monster(room, creators, doom, folder=''):
     conn.close()
 
     DC = numpy.random.randint(low=0, high=4)
-    hp = all_monsters[2]
+    hp = int(all_monsters[2])
     if DC == 0:
         stats = numpy.random.randint(low=35, high=45, size=3) + numpy.array([all_monsters[3], all_monsters[4], all_monsters[5]])
     if DC == 1:
@@ -1056,7 +860,10 @@ async def generate_monster(room, creators, doom, folder=''):
 
 
     weapons = ['longsword', 'shortsword', 'greatsword', 'battleaxe', 'handaxe', 'mace', 'spear', 'warhammer', 'maul', \
-    'glaive', 'halberd', 'scimitar', 'dagger', 'twin swords']
+    'glaive', 'halberd', 'scimitar', 'dagger', 'twin swords', 'rapier', 'trident', 'club']
+
+    
+    attack, vulnerability, resistance = determine_damage_type(all_monsters[7])
 
 
     monster_type = all_monsters[1]
@@ -1082,6 +889,9 @@ async def generate_monster(room, creators, doom, folder=''):
 
         roll = numpy.random.randint(low=0, high=len(weapons))
         description += ' wielding '+random_material(weapons[roll], metal=True)
+
+        attack = determine_damage_type_from_weapon(weapons[roll])
+        how_to_attack = 'warrior'
 
 
     if all_monsters[0] == 'beast':
@@ -1157,85 +967,14 @@ async def generate_monster(room, creators, doom, folder=''):
         description = 'a powerful and extremly dangerous '+all_monsters[1]+', '+all_monsters[6]
 
 
-    return [description, monster_type, hp, stats, how_to_attack]
+    return [description, monster_type, hp, stats, how_to_attack, attack, vulnerability, resistance]
 
 
-def set_dungeon(dungeon, user_id, folder=''):
-    conn = sqlite3.connect(folder+'game_control.bd')
-    c = conn.cursor()
-    for i in range(len(dungeon)):
-        neighbours = ''
-        for j in range(len(dungeon[i].neighbours)):
-            neighbours += str(dungeon[i].neighbours[j])+';'
 
-        room = dungeon[i]
-        furniture = ''
-        items = ''
-        for j in room.content:
-            if j.description != ' '*100:
-                furniture += j.save_line()+'\n'
-                if j.is_container:
-                    items += j.content.save_line()+'\n'
-
-        c.execute('INSERT INTO dungeon VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', 
-            (user_id, dungeon[i].room_id, dungeon[i].purpose, dungeon[i].chamber_state, 
-            dungeon[i].air, dungeon[i].description, int(dungeon[i].coord_x), int(dungeon[i].coord_y),
-            int(dungeon[i].is_cleared), int(dungeon[i].has_monster), neighbours, furniture, items))
-    conn.commit()
-    conn.close()
-
-def update_dungeon(dungeon, user_id, folder):
-    delete_dungeon(user_id, folder)
-    set_dungeon(dungeon, user_id, folder)
-
-def delete_dungeon(user_id, folder=''):
-    conn = sqlite3.connect(folder+'game_control.bd')
-    c = conn.cursor()
-    c.execute('DELETE FROM dungeon WHERE user_id = ?', [user_id])
-    conn.commit()
-    conn.close()
-
-
-def load_dungeon(user_id, folder=''):
-    dungeon = []
-    conn = sqlite3.connect(folder+'game_control.bd')
-    c = conn.cursor()
-    c.execute('SELECT * FROM dungeon WHERE user_id = ?', [user_id]) 
-    room = c.fetchall()
-    conn.close()
-    for i in range(len(room)):
-        temp = room[i]
-        x = Room()
-        x.room_id = int(temp[1])
-        x.purpose = temp[2]
-        x.chamber_state = temp[3]
-        x.air = temp[4]
-        x.description = temp[5]
-        x.coord_x = int(temp[6])
-        x.coord_y = int(temp[7])
-        x.is_cleared = bool(int(temp[8]))
-        x.has_monster = bool(int(temp[9]))
-
-        neighbours = []
-        for j in temp[10].split(';')[:-1]:
-            if j != ' ':
-                neighbours.append(int(j)) 
-            else:
-                neighbours.append(' ')
-        x.neighbours = neighbours
-
-        # furniture and items
-        if len(temp[11]) != 0:
-            x.load(temp[11], temp[12])
-
-        dungeon.append(x)
-
-    return dungeon
         
 
 
-#clean_file('dungeons/religious_furniture.txt')
-#delete_dungeon(123)
-#main([0,0], 123)
 
+if __name__ == '__main__':
+    main('kek', 0)
 
